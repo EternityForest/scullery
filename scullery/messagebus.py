@@ -15,7 +15,7 @@
 
 "This file manages the kaithem global message bus that is used mostly for logging but also for many other tasks."
 
-import weakref,threading,time,os,random,traceback,cherrypy,logging,inspect,types,copy
+import weakref,threading,time,os,random,traceback,logging,inspect,types,copy
 from typing import Callable,Optional
 
 from typeguard import typechecked
@@ -39,10 +39,16 @@ def normalize_topic(topic):
     else:
         return topic
 
+def _shouldReRaiseAttrErr():
+    return True
 
+def defaultErrorHandler(*a):
+    print(traceback.format_exc())
+    
 subscriberErrorHandlers = []
 
 def handleError(f,topic,value):
+    log.exception("Message bus subscriber error")
     for i in subscriberErrorHandlers:
         try:
             i(f,topic,value)
@@ -102,11 +108,9 @@ class MessageBus(object):
                         self.subscribers.pop(topic)
             except AttributeError as e:
                 #This try and if statement are supposed to catch nuisiance errors when shutting down.
-                try:
-                    if cherrypy.engine.state == cherrypy.engine.states.STARTED:
-                        raise e
-                except:
-                        pass
+                if _shouldReRaiseAttrErr():
+                    raise e
+ 
             finally:
                 with _subscribers_list_modify_lock:
                     self.subscribers_immutable = copy.deepcopy(self.subscribers)
@@ -176,11 +180,9 @@ class MessageBus(object):
                         self.subscribers.pop(topic)
             except AttributeError as e:
                 #This try and if statement are supposed to catch nuisiance errors when shutting down.
-                try:
-                    if cherrypy.engine.state == cherrypy.engine.states.STARTED:
-                        raise e
-                except:
-                        pass
+                if _shouldReRaiseAttrErr():
+                    raise e
+               
             finally:
                 with _subscribers_list_modify_lock:
                     self.subscribers_immutable = copy.deepcopy(self.subscribers)
@@ -192,7 +194,7 @@ class MessageBus(object):
         else:
             f = weakref.ref(f,delsubscription)
 
-        #Mutable object for keeping track of if we already loggged this
+        #Mutable object that gets saved to the closure for keeping track of if we already loggged this
         alreadyLogged=[False]
         if args==0:
             def g(topic, message,errors,timestamp,annotation):

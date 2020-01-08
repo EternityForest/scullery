@@ -16,7 +16,7 @@
 #This file manages a work queue that feeds a threadpool
 #Tasks will be performed on a best effort basis and errors will be caught and ignored.
 
-import threading,sys,cherrypy,traceback, logging
+import threading,sys,traceback, logging
 import atexit,time
 import random
 
@@ -60,8 +60,6 @@ def EXIT():
         except RuntimeError:
             pass
 
-atexit.register(EXIT)
-cherrypy.engine.subscribe("exit",EXIT)
 
 def makeWorker(e,q):
     #one worker that just pulls tasks from the queue and does them. Errors are caught and

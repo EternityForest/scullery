@@ -195,11 +195,12 @@ def getCaps(e):
 class GstreamerPipeline():
     """Semi-immutable pipeline that presents a nice subclassable GST pipeline You can only add stuff to it.
     """
-    def __init__(self, name, realtime=70, systemTime =False):
+    def __init__(self, name=None, realtime=70, systemTime =False):
         init()
         self.exiting = False
 
         self.uuid = uuid.uuid4()
+        name=name or "Pipeline"+str(time.monotonic())
         gc.collect()
         self.realtime = 70
         self.lock = threading.RLock()
@@ -530,9 +531,9 @@ class GstreamerPipeline():
                 raise ValueError("Element type must be string")
 
             e = Gst.ElementFactory.make(t,name)
-            self.weakrefs[str(e)]=e
             if e==None:
-                raise ValueError("Nonexistant element type")
+                raise ValueError("Nonexistant element type: "+t)
+            self.weakrefs[str(e)]=e
 
 
             for i in kwargs:
