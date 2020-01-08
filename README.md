@@ -4,9 +4,11 @@ that make sense independantly.
 
 There is a lot of functionality planned, but it's not at all neccesary to use or understand all of it to use one piece.
 
+You will obviously need the Python Gstreamer bindings for those features(but not unrelated features), and several other
+dependancies.
 
 ## Intro
-See example.py for more details. 
+See example.py for more details. Also see the equally simple audio and video player.
 
 ## Examples
 ```python
