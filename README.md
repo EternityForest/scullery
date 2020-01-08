@@ -22,6 +22,10 @@ scullery.workers.start()
 #Including just importing this, #Todo?
 import scullery.messagebus
 
+import scullery.persist
+
+
+
 class NoiseWindow(scullery.iceflow.GstreamerPipeline):
 	def __init__(self):
 		scullery.iceflow.GstreamerPipeline.__init__(self)
@@ -44,6 +48,19 @@ scullery.messagebus.subscribe("/test/topic",subscriber)
 scullery.messagebus.postMessage("/test/topic","TestPayload")
 
 import time
+
+#Also supports YAML, txt, bin for the appropriate datatypes, if the YAML lib is there.
+#Can use .gz or .b2z to compress. Saved atomically with tilde files and UNIX rename semantics.
+#Checks if it actually needs to save before actually writing the file.
+import os
+#Get an abs path
+fn = os.path.join(os.path.dirname(os.path.abspath(__file__)),"testFile.json")
+print("Going to save data to: "+fn)
+scullery.persist.save(myData,fn)
+assert scullery.persist.load(fn)==myData
+
+
+
 while(1):
     time.sleep(1)
 ```
