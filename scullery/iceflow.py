@@ -218,7 +218,7 @@ def getCaps(e):
 class GstreamerPipeline():
     """Semi-immutable pipeline that presents a nice subclassable GST pipeline You can only add stuff to it.
     """
-    def __init__(self, name=None, realtime=70, systemTime =False):
+    def __init__(self, name=None, realtime=None, systemTime =False):
         init()
         self.exiting = False
 
@@ -411,10 +411,12 @@ class GstreamerPipeline():
         
 
     def on_message(self, bus, message,userdata):
-        self.onMessage(message)
+        s = message.get_structure()
+        if s:
+            self.onMessage(message.src,s.get_name(), s)
         return True
 
-    def onMessage(self,message):
+    def onMessage(self,src,name, structure):
         pass
 
     def on_error(self,bus,msg,userdata):
@@ -597,19 +599,8 @@ class GstreamerPipeline():
 
 
             for i in kwargs:
-                #Special case, detect Nonexistant files and don't bother,
-                #Otherwise it just doesn't start and won't tell you why
-                if i=="location" and t=="filesrc":
-                    if not os.path.exists(kwargs[i]):
-                        raise ValueError("No such file: "+kwargs[i])
-                    
-                if not ":" in i:
-                    if t=="capsfilter" and i=="caps" and isinstance(i,str):
-                        e.set_property(i,Gst.Caps(kwargs[i]))
-                    else:
-                        v = kwargs[i]
-                        i=i
-                        e.set_property(i,v)
+                v = kwargs[i]
+                self.setProperty(e,i,v)
                 
             self.pipeline.add(e)
 
@@ -662,6 +653,10 @@ class GstreamerPipeline():
     def setProperty(self, element, prop,value):
         with self.lock:
 
+            if prop=="location" and self.elementTypesById[id(element)]=='filesrc':
+                if not os.path.isfile(value):
+                    raise ValueError("No such file: "+value)
+                
             if prop=='caps':
                 value=Gst.caps(value)
                 self.weakrefs[str(value)]=value

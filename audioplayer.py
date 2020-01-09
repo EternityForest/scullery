@@ -6,7 +6,9 @@ import sys
 
 class Player(scullery.iceflow.GstreamerPipeline):
     def __init__(self,file):
-        scullery.iceflow.GstreamerPipeline.__init__(self)
+        #Systemtime only applies to seekable pipes. Tries to keep it running at the system time rate. If it drifts, you may getCaps
+        #Ugly pauses, but that may be better than getting out of sync.
+        scullery.iceflow.GstreamerPipeline.__init__(self,realtime=None,systemTime=True)
 
         self.src = self.addElement('filesrc',location=file)
 
@@ -21,7 +23,8 @@ class Player(scullery.iceflow.GstreamerPipeline):
         self.fader = self.addElement('volume', volume=1)
         self.sink = self.addElement('autoaudiosink') 
 
-
+    def onMessage(self,src,name,structure):
+        print("Got Message: "+name+" from "+str(src))
 
 
 p=Player(sys.argv[1])

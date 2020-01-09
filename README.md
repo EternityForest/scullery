@@ -66,3 +66,42 @@ assert scullery.persist.load(fn)==myData
 while(1):
     time.sleep(1)
 ```
+
+
+
+
+### scullery.iceflow.GstreamerPipeline
+
+
+#### addElement(elementType, name=None, connectToOutput=None,**kwargs)
+
+Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
+element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a pad
+on that is available.
+
+The `**kwargs` are used to set properties of the element.
+
+
+#### setProperty(element, property, value)
+Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
+valid files that exist.
+
+#### onMessage(source, name, structure)
+Used for subclassing. Called when a message that has a structure is seen on the bus. Source is the GST elemeny, struct is dict-like, and name is a string.
+
+#### play()
+If paused, start. If never started, raise an error.
+
+#### start()
+Start running
+
+#### stop()
+
+Permanently stop and clean up.
+
+#### pause()
+
+What it sounds like
+
+#### seek(t=None, rate=None)
+Seek to a time, set playback rate, or both.
