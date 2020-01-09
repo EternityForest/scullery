@@ -71,7 +71,7 @@ while(1):
 
 
 ### scullery.iceflow.GstreamerPipeline
-
+This is the base class for making GStreamer apps
 
 #### addElement(elementType, name=None, connectToOutput=None,**kwargs)
 
@@ -105,3 +105,78 @@ What it sounds like
 
 #### seek(t=None, rate=None)
 Seek to a time, set playback rate, or both.
+
+
+
+
+### scullery.jack
+
+This submodule requires pyjack, and of course Jack. You should normally import this somewhere if using IceFlow with JACK.
+
+
+#### Message Bus activity
+
+##### /system/jack/newport
+ A PortInfo object with a .name, isInput, and isOutput property gets posted here whenever a new port is added to JACK.
+
+##### /system/jack/delport
+ A PortInfo object gets posted here whenever a port is unregistered.
+
+##### system/jack/started
+When jack is started or restarted
+
+ 
+
+#### Config:
+```
+jackPeriods = 3
+periodSize = 128
+
+#These apply to soundcards other than the main system card
+usbPeriodSize = 384
+usbLatency = 384
+
+realtimePriority = 70
+
+#Do we want to run PulseAudio and the pulse jack backend?
+usePulse= True
+
+sharePulse = None
+
+#Should we create alsa_in and alsa_out ports for every soundcard, with persistant names?
+manageSoundcards = True
+
+#Should we auto restart the jack process?
+#No by default, gets auto set to True by startJackServer()
+manageJackProcess = False
+```
+
+
+#### sullery.jack.startManaging()
+Start the worker thread and enable management functions
+
+#### scullery.jack.startJackServer()
+Actually start the jack server. They are separate because you may want to do this yourself.
+
+#### scullery.jack.Airwire(from,to)
+Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.
+If you try to connect a client to a single port, all outputs get mixed down. Likewise a port to a client duplicates to all inputs.
+
+They start in the disconnected state.
+
+#### scullery.jack.Airwire(from,to)
+Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.
+If you try to connect a client to a single port, all outputs get mixed down. Likewise a port to a client duplicates to all inputs.
+
+They start in the disconnected state.
+
+#### scullery.jack.Airwire.connect()
+Connect and stay connected. Even if a client dissapears and comes back. Deleting the Airwire will disconnect.
+Note that manually disconnecting may not be undone, to prevent annoyance.
+
+#### scullery.jack.Airwire.disconnect()
+Disconnect.
+
+
+
+

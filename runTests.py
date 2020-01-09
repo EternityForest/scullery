@@ -4,6 +4,10 @@ scullery.workers.start()
 import unittest
 
 
-from tests import testAudioPlayback
+#WARNING: Plays audio, stops pulse, and generally takes over hte sound
+from tests import testJack
+unittest.main(testJack)
 
+
+from tests import testAudioPlayback
 unittest.main(testAudioPlayback)
