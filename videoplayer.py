@@ -27,8 +27,6 @@ class Player(scullery.iceflow.GstreamerPipeline):
         self.addElement('autovideosink',connectToOutput=conv)
 
 
-
-
 p=Player(sys.argv[1])
 p.start()
 
