@@ -164,11 +164,6 @@ If you try to connect a client to a single port, all outputs get mixed down. Lik
 
 They start in the disconnected state.
 
-#### scullery.jack.Airwire(from,to)
-Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.
-If you try to connect a client to a single port, all outputs get mixed down. Likewise a port to a client duplicates to all inputs.
-
-They start in the disconnected state.
 
 #### scullery.jack.Airwire.connect()
 Connect and stay connected. Even if a client dissapears and comes back. Deleting the Airwire will disconnect.
