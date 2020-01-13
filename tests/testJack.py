@@ -36,11 +36,29 @@ class TestJackAudio(unittest.TestCase):
         gc.collect()
         
         self.assertEqual(len(scullery.jack.allConnections), 0)
-            
+
+    def test_fluidsynth_jack(self):
+        import scullery.fluidsynth
+        fs = scullery.fluidsynth.FluidSynth(jackClientName="fstest",connectOutput="system")
+
+        print("You should hear a MIDI note. This test require's fluidsynth, pyFluidsynth, and it's default sf2 file")
+        fs.noteOn(0,70,50)
+        time.sleep(0.5)
+        fs.noteOff(0,70)
+        fs.setInstrument(0,"Pizzicato")
+        print("You should hear a Pizzicato string note")
+        fs.noteOn(0,70,70)
+        time.sleep(1)
+        fs.noteOff(0,70)
+
+
+
     def test_z_stop(self):
         "Must obviously run last"
+        print("Stopping JACK")
         scullery.jack.stopManaging()
         scullery.jack.stopJackServer()
+        print("Stopped JACK")
 
             
 

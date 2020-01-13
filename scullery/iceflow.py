@@ -13,10 +13,6 @@
 
 #You should have received a copy of the GNU General Public License
 
-
-#This file really shouldn't have too many non-essential dependancies onthe rest of kaithem,
-#Aside from the threadpool and the message bus.
-
 import threading,time,logging,uuid,weakref,gc,uuid,traceback,os
 
 from . import workers
@@ -658,7 +654,7 @@ class GstreamerPipeline():
                     raise ValueError("No such file: "+value)
                 
             if prop=='caps':
-                value=Gst.caps(value)
+                value=Gst.Caps(value)
                 self.weakrefs[str(value)]=value
 
             prop=prop.replace("_","-")

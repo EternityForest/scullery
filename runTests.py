@@ -11,3 +11,7 @@ unittest.main(testJack)
 
 from tests import testAudioPlayback
 unittest.main(testAudioPlayback)
+
+
+from tests import testMisc
+unittest.main(testMisc)

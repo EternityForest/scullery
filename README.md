@@ -10,6 +10,11 @@ dependancies.
 ## Intro
 See example.py for more details. Also see the equally simple audio and video player.
 
+## Testing
+Warning, takes over audio, starts JACK, makes noise:python3 -m unittest discover tests
+
+Running just one test suite: python3 -m unittest tests/testFluidSynth.py
+
 ## Examples
 ```python
 import scullery.iceflow
@@ -174,4 +179,28 @@ Disconnect.
 
 
 
+### scullery.fluidsynth
 
+This module deals with MIDI synthesis
+
+### scullery.fluidsynth.FluidSynth(self, soundfont=None,jackClientName=None)
+
+Creates an instance of the FluidSynth soundfont synthesizer. Soundfont is an file path, or it defaults
+to one that sometimes ships with fluidsynth. if jackClientName is provided, outputs audio via JACK.
+
+You don't have to worry about cleanup, that happens automatically on GC.
+
+Using this without JACK may not work.
+
+#### fs.noteOn(channel,note,velocity)
+#### fs.noteOff(channel,note)
+#### fs.setInstrument(channel,instrument)
+Set the instrumemt. If instrument is str, we will use the closest match we can find, or raise an error.
+
+
+### scullery.units
+This module deals with unit conversions.
+
+#### scullery.units.convert(value,fromUnit, toUnit)
+Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
+supported.

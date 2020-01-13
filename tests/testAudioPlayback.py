@@ -2,6 +2,8 @@ import scullery.workers
 scullery.workers.start()
 
 import scullery.iceflow
+import scullery.fluidsynth
+
 import os,time
 
 import unittest,random,gc
@@ -31,24 +33,7 @@ class NonexistantElement(scullery.iceflow.GstreamerPipeline):
 
         
 
-class TestStringMethods(unittest.TestCase):
-
-    def test_no_segfaults(self):
-        #Test for segfault-ery
-        for i in range(0,100):
-            p=Player(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "media","Brothers Unite.ogg"))
-            p.start()
-            time.sleep(0.1*random.random())
-            p.seek(0.3)
-            time.sleep(0.1*random.random())
-            p.setProperty(p.fader, "volume",1)
-            p.stop()
-        del p
-        gc.collect()
-        time.sleep(15)
-        gc.collect()
-
-        self.assertEqual(len(scullery.iceflow.pipes), 0)
+class TestAudio(unittest.TestCase):
             
     def test_3s_player(self):
         print("An audio file should play for 3s, then start over and slightly speed up, then speed up for 3s")
@@ -73,7 +58,7 @@ class TestStringMethods(unittest.TestCase):
             NonexistantElement()
             
 
-
-
-
-
+    def test_nonexistant_element(self):
+        with self.assertRaises(ValueError):
+            NonexistantElement()
+            

@@ -22,5 +22,7 @@ setuptools.setup(
     install_requires=[
           'pyyaml',
           'typeguard',
+          "sf2utils",
+          "pyFluidSynth"
       ],
 )
