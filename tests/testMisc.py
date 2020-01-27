@@ -22,7 +22,7 @@ class TestJackAudio(unittest.TestCase):
         "Test with a longer requested result"
         self.assertEqual(units.convert(12,"in","ft"), 1)
         self.assertEqual(units.convert(1,"km","m"), 1000)
-        self.assertEqual(units.convert(50,"degC","degF"), 122)
+        self.assertAlmostEqual(units.convert(50,"degC","degF"), 122)
         self.assertAlmostEqual(units.convert(122,"degF","degC"), 50)
         self.assertAlmostEqual(units.convert(1,"kft","in"), 12000)
         #Milli-inches?
