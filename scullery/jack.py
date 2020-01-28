@@ -1335,7 +1335,7 @@ def getConnections(name,*a,**k):
         try:
             return _jackclient.get_all_connections(name)
         except:
-            log.exception()
+            log.exception("Error getting connections")
             return []
 
 def connect(f,t):
