@@ -33,15 +33,39 @@ class TestAudio(unittest.TestCase):
         for i in range(0,100):
             p=Player(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "media","Brothers Unite.ogg"))
             p.start()
-            time.sleep(0.1*random.random())
+            time.sleep(0.01*random.random())
             p.seek(0.3)
-            time.sleep(0.1*random.random())
+            time.sleep(0.01*random.random())
             p.setProperty(p.fader, "volume",1)
             p.stop()
+            #Ensure nothing bad happens setting the volume after stopping
+            p.setProperty(p.fader, "volume",1)
         del p
         gc.collect()
-        time.sleep(15)
+        for i in range(150):
+            time.sleep(0.1)
+            if len(scullery.iceflow.pipes)==0:
+                break
         gc.collect()
 
         self.assertEqual(len(scullery.iceflow.pipes), 0)
      
+    def test_seekpastend(self):
+        p=Player(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "media","Brothers Unite.ogg"))
+        p.start()
+        time.sleep(0.01*random.random())
+        p.seek(99999)
+        time.sleep(0.01*random.random())
+        p.setProperty(p.fader, "volume",1)
+        p.stop()
+        #Ensure nothing bad happens setting the volume after stopping
+        p.setProperty(p.fader, "volume",1)
+        del p
+        gc.collect()
+        for i in range(150):
+            time.sleep(0.1)
+            if len(scullery.iceflow.pipes)==0:
+                break
+        gc.collect()
+
+        self.assertEqual(len(scullery.iceflow.pipes), 0)

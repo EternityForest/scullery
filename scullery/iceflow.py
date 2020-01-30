@@ -214,7 +214,7 @@ def getCaps(e):
 class GstreamerPipeline():
     """Semi-immutable pipeline that presents a nice subclassable GST pipeline You can only add stuff to it.
     """
-    def __init__(self, name=None, realtime=None, systemTime =False):
+    def __init__(self, name=None, realtime=None, systemTime =False,loopCount=0):
         init()
         self.exiting = False
 
@@ -227,6 +227,9 @@ class GstreamerPipeline():
         self.pipeline = Gst.Pipeline()
         self.threadStarted=False
         self.weakrefs = weakref.WeakValueDictionary()
+
+        self.loopCount = loopCount
+        self.loopsRemaining = loopCount
 
         #This WeakValueDictionary is mostly for testing purposes
         pipes[id(self)]=self
@@ -369,6 +372,14 @@ class GstreamerPipeline():
     
     
     def on_eos(self,*a,**k):
+        if self.loopCount == -1 or self.loopsRemaining >0:
+            if self.loopCount>0:
+                self.loopsRemaining -=1
+                
+            self.seek(0)
+            self.play()
+            return
+        
         def f2():
             try:
                 self.stop()
