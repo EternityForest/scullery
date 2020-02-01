@@ -4,7 +4,7 @@ import unittest
 from scullery import mnemonics
 from scullery import units
 
-class TestJackAudio(unittest.TestCase):
+class TestMisc(unittest.TestCase):
     def test_wordlist(self):
         self.assertEqual(len(mnemonics.wordlist),1633)
             
