@@ -120,6 +120,12 @@ def makeWeakrefPoller(selfref,exitSignal):
 
     def pollerf():
         alreadyStarted = False
+        lastAdjustment=0
+        #Last time we adjusted, how much error was left?
+        lastRemnantError=0
+        computeRemnant=False
+
+        avgDiff = 0
         while selfref():
             self=selfref()
             
@@ -127,10 +133,12 @@ def makeWeakrefPoller(selfref,exitSignal):
             if not self.running:
                 exitSignal.append(True)
                 return
+            
             if self.running:
                 t=time.monotonic()
                 try:
                     with self.lock:
+                        self.loopCallback()
                         state = self.pipeline.get_state(1000000000)[1]
                     
 
@@ -154,37 +162,49 @@ def makeWeakrefPoller(selfref,exitSignal):
                                 #adjust taking into account the desired rate
                                 sysElapsed = (m-self.startTime)/self.targetRate
                                 diff = t-sysElapsed
+                                #Igniore absurb vals
+                                if(abs(diff)< 60):
+                                    #Weighted towards the lower diff vals,
+                                    #We wanto to really ignore outliers, if they would cause
+                                    #a nonsense correction
+                                    if(abs(diff)<abs(avgDiff)):
+                                        avgDiff = (avgDiff*0.7) + (diff*0.3)
+                                    else:
+                                        avgDiff = (avgDiff*0.9) + (diff*0.1)
+                                #That flag says we just did a recent media
+                                # Seek and we need to get the remaining error
+                                #But we need to take into account the old remnant error
+                                #Which was used to make that adjustmennt.
+                                if computeRemnant:
+                                    lastRemnantError+=diff
+                                    computeRemnant=False
                                 needAdjust = False
                                 
-                                #Large change, we set the rate by a third of a percent,
-                                #And set it in absolute units, to override any nonsense windup that has accumulated.
-                                if diff>0.025:
-                                    self.pipelineRate = self.targetRate - 0.003
-                                    needAdjust=True
-                                elif diff<-0.025:
-                                    self.pipelineRate = self.targetRate + 0.003
-                                    needAdjust=True
-                                
-                                #Otherwise we make small adjustments, in relative units, that should not 
-                                #Be noticable at all
-                                elif diff>0.005:
-                                    self.pipelineRate = self.pipelineRate - 0.0003
-                                    needAdjust=True
-                                elif diff<-0.005:
-                                    self.pipelineRate = self.targetRate + 0.0003
-                                    needAdjust=True
-                                else:
-                                    #We want to set things back, if we can. to preserve some sanity
-                                    #And avoid poor quality from running at a different rate
-                                    if not self.pipelineRate==self.targetRate:
-                                        needAdjust=True
-                                    self.pipelineRate=self.targetRate
+                                if t>5:
+                                    if (time.monotonic()-lastAdjustment)>10:
+                                        #Very slow feedback loop that tries to match the speeds
+                                        #The up and down rates are different on purpose, to increase precision
+                                        if avgDiff>0.030:
+                                            needAdjust=True
+                                            self.pipelineRate = self.pipelineRate*0.998
+                                        elif avgDiff<-0.30:
+                                            needAdjust=True 
+                                            self.pipelineRate= self.pipelineRate*1.005
+                                    
                                 
             
-
+                                #We don't bother adjusting for things that barely
+                                #Even started, nor do we want to adjust for very short files. 
                                 if needAdjust:
+                                    lastAdjustment=time.monotonic()
                                     #Don't actually set the target rate of anything like that
-                                    self.seek(rate=self.pipelineRate,_raw=True)
+                                    
+                                    #Apply an offset to the actual value we pass gstreamer, this lets us compensate for
+                                    #The small bit of lag in the seek.
+                                    self.seek(sysElapsed,rate=self.pipelineRate,_raw=True)
+                        
+                                    computeRemnant = True
+                            
                             except:
                                 logging.exception("GST time sync error")
                                 continue
@@ -214,7 +234,7 @@ def getCaps(e):
 class GstreamerPipeline():
     """Semi-immutable pipeline that presents a nice subclassable GST pipeline You can only add stuff to it.
     """
-    def __init__(self, name=None, realtime=None, systemTime =False,loopCount=0):
+    def __init__(self, name=None, realtime=None, systemTime =False):
         init()
         self.exiting = False
 
@@ -228,8 +248,6 @@ class GstreamerPipeline():
         self.threadStarted=False
         self.weakrefs = weakref.WeakValueDictionary()
 
-        self.loopCount = loopCount
-        self.loopsRemaining = loopCount
 
         #This WeakValueDictionary is mostly for testing purposes
         pipes[id(self)]=self
@@ -300,8 +318,10 @@ class GstreamerPipeline():
 
 
         
-    
-    def seek(self, t=None,rate=None, _raw=False):
+    def loopCallback(self):
+        #Meant to subclass. Gets called under the lock
+        pass
+    def seek(self, t=None,rate=None, _raw=False,_offset=0.008):
         "Seek the pipeline to a position in seconds, set the playback rate, or both"
         with self.lock:
             if self.exiting:
@@ -312,14 +332,16 @@ class GstreamerPipeline():
             if rate is None:
                 rate=self.targetRate
 
-            #Set effective start time so that the system clock sync keeps working.
-            if not t is None:
-                self.startTime = time.monotonic()-t
+           
             if not _raw:
+                #Set "effective start time" so that the system clock sync keeps working.
+                if not t is None:
+                    t= max(t,0)
+                    self.startTime = time.monotonic()-t
                 self.targetRate = rate
                 self.pipelineRate = rate
             self.pipeline.seek (rate, Gst.Format.TIME,
-            Gst.SeekFlags.SKIP|Gst.SeekFlags.FLUSH, Gst.SeekType.NONE if t is None else Gst.SeekType.SET, max((t or 0)*10**9,0),
+            Gst.SeekFlags.SKIP|Gst.SeekFlags.FLUSH, Gst.SeekType.NONE if t is None else Gst.SeekType.SET, max((t+_offset or 0)*10**9,0),
             Gst.SeekType.NONE, -1)
     
     def getPosition(self):
@@ -370,16 +392,11 @@ class GstreamerPipeline():
             return e
 
     
-    
+    #Low level wrapper just for filtering out args we don't care about
     def on_eos(self,*a,**k):
-        if self.loopCount == -1 or self.loopsRemaining >0:
-            if self.loopCount>0:
-                self.loopsRemaining -=1
-                
-            self.seek(0)
-            self.play()
-            return
-        
+        self.onEOS()
+
+    def onEOS(self):
         def f2():
             try:
                 self.stop()
@@ -443,6 +460,8 @@ class GstreamerPipeline():
         with self.lock:
             if self.exiting:
                 return
+
+                        
             x = effectiveStartTime or time.time()
             timeAgo = time.time()-x
             #Convert to monotonic time that the nternal APIs use

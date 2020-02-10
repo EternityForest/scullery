@@ -14,7 +14,7 @@ See example.py for more details. Also see the equally simple audio and video pla
 Warning, takes over audio, starts JACK, makes noise:python3 -m unittest discover tests
 
 Running just one test suite: python3 -m unittest tests/testFluidSynth.py
-
+8
 ## Examples
 ```python
 import scullery.iceflow
@@ -204,3 +204,12 @@ This module deals with unit conversions.
 #### scullery.units.convert(value,fromUnit, toUnit)
 Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
 supported.
+
+### scullery.netmedia
+
+#### scullery.netmedia.downloadVideo(vid, directory="~/Videos/IceFlow Cache", format="bestvideo", timeout=10)
+
+Download a video based on a youtube-dl specifier, in the given format("bestaudio") for audio only, and return the filename the moment the download begins.
+
+
+Nothing else should ever be writing to this cache dir, aside from maybe manually putting in videos.

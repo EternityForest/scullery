@@ -70,16 +70,15 @@ class TestMsgbus(unittest.TestCase):
         workerSpam(100)
         self.assertLessEqual(len(workers.workers),workers.maxWorkers)
 
-        for i in range(100):
+        for i in range(1000):
             self.assertEqual(workerTest(),1)
 
         for i in range(100):
             self.assertEqual(workerTest(),1)
             time.sleep(0.001)
 
-        for i in range(10):
-            self.assertEqual(workerTest(0.1),1)
-
+        for i in range(1):
+            self.assertEqual(workerTest(0.1),2)
 
         for i in range(100):
             self.assertEqual(workerTest(),1)
@@ -88,4 +87,5 @@ class TestMsgbus(unittest.TestCase):
         self.assertLessEqual(len(workers.workers),workers.maxWorkers)
 
         time.sleep(3)
+        #Workers should stop within 1s of inactivity.
         self.assertEqual(len(workers.workers),workers.minWorkers)
