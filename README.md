@@ -33,9 +33,9 @@ import scullery.persist
 
 
 
-class NoiseWindow(scullery.iceflow.GstreamerPipeline):
+class NoiseWindow(scullery.iceflow.GStreamerPipeline):
 	def __init__(self):
-		scullery.iceflow.GstreamerPipeline.__init__(self)
+		scullery.iceflow.GStreamerPipeline.__init__(self)
 		self.addElement("videotestsrc",pattern="snow")
 		self.addElement("autovideosink")
 		
@@ -75,17 +75,22 @@ while(1):
 
 
 
-### scullery.iceflow.GstreamerPipeline
+### scullery.iceflow.GStreamerPipeline
 This is the base class for making GStreamer apps
 
 #### addElement(elementType, name=None, connectToOutput=None,**kwargs)
 
 Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
-element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a pad
+element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a suitable pad
 on that is available.
 
 The `**kwargs` are used to set properties of the element.
 
+#### addPILCapture(resolution, connectToOutput=None,buffer=1)
+Adds a PILCapture object which acts like a video sink. It will buffer the most recent N frames, discarding as needed.
+
+##### PILCapture.pull()
+Return a video frame as a PIL/Pillow Image. May return None on empty buffers.
 
 #### setProperty(element, property, value)
 Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
@@ -107,6 +112,10 @@ Permanently stop and clean up.
 #### pause()
 
 What it sounds like
+
+#### isActive()
+
+Return True if playing or paused
 
 #### seek(t=None, rate=None)
 Seek to a time, set playback rate, or both.
