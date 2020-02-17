@@ -48,34 +48,6 @@ class PILCapture():
 
 
 
-
-class PresenceDetector():
-    def __init__(self,capture):
-        self.lock = threading.Lock()
-        self.masks = {}
-        #This is a first order filter(Time domain blur) of the entire image
-
-
-
-        self.state = None
-        self.last=None
-        self.capture=capture
-
-    def poll(self):
-        from PIL import ImageChops,ImageMath
-        import matplotlib.pyplot as plt
-        #Floating point
-        self.last = self.capture.pull().convert('F') or self.last
-        if not self.state:
-            self.state = self.last
-        else:
-            self.state = ImageMath.eval("old*0.9 + new*0.1",old=self.state, new=self.last)
-        
-        if self.state:
-           self.state.show()
-        
-
-
 def link(a,b):
     unref = False
     try:

@@ -218,7 +218,7 @@ supported.
 
 #### scullery.netmedia.downloadVideo(vid, directory="~/Videos/IceFlow Cache", format="bestvideo", timeout=10)
 
-Download a video based on a youtube-dl specifier, in the given format("bestaudio") for audio only, and return the filename the moment the download begins.
+Download a video based on a youtube-dl specifier, in the given format("bestaudio") for audio only, and try to return the filename the moment the download begins.
 
 
 Nothing else should ever be writing to this cache dir, aside from maybe manually putting in videos.
