@@ -11,14 +11,13 @@ import unittest,random,gc
 class Player(scullery.iceflow.GstreamerPipeline):
     def __init__(self):
         scullery.iceflow.GstreamerPipeline.__init__(self,realtime=False)
-
         self.sink = self.addElement('audiotestsrc') 
-
         self.sink = self.addElement('jackaudiosink',client_name="JackTest") 
 
 
 
 scullery.jack.startManaging()
+#We call this manually, but it's not going to auto reconnect.
 scullery.jack.startJackServer()
 
 class TestJackAudio(unittest.TestCase):

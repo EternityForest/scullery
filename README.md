@@ -122,6 +122,20 @@ Seek to a time, set playback rate, or both.
 
 
 
+### scullery.messagebus
+
+#### scullery.messagebus.subscribe(callback,topic)
+Subscribe to a topic. Topics are a slash delimited heirarchy,a # at the end is a wildcard,
+just like MQTT.
+
+
+#### scullery.messagebus.subscriberErrorHandlers  = []
+
+List of functions to be called whenever an error happens in a subscribed function.
+
+Signature must be function,topic,value.
+
+If the function has an attribute messagebusWrapperFor, the value of that property is passed instead of the function itself. Any higher level stuff that uses the message bus must set this property when wrapping functions.
 
 ### scullery.jack
 
@@ -142,7 +156,9 @@ When jack is started or restarted
  
 
 #### Config:
-```
+```python
+
+#Only relevant if manageJackProcess is True
 jackPeriods = 3
 periodSize = 128
 
@@ -153,6 +169,7 @@ usbLatency = 384
 realtimePriority = 70
 
 #Do we want to run PulseAudio and the pulse jack backend?
+#Note that we automatically kill any pulseaudio process we find before
 usePulse= True
 
 sharePulse = None
@@ -160,8 +177,9 @@ sharePulse = None
 #Should we create alsa_in and alsa_out ports for every soundcard, with persistant names?
 manageSoundcards = True
 
-#Should we auto restart the jack process?
-#No by default, gets auto set to True by startJackServer()
+#Should we start the jack process itself, and auto restart it?
+#If False, we just try to use an existing one.
+#Must set this to True before calling startManaging!
 manageJackProcess = False
 ```
 

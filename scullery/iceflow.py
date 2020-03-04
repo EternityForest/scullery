@@ -71,11 +71,20 @@ def link(a,b):
 def stopAllJackUsers():
     #It seems best to stop everything using jack before stopping and starting the daemon.
     with lock:
-        for i in jackChannels:
-            x=jackChannels[i]()
-            if x:
-                x.stop()
-            del x
+        c = list(jackChannels.items())
+        for i in c:
+            try:
+                i[1]().stop()
+            except:
+                log.exception("Err stopping JACK user")
+        del c
+        #Defensive programming against a double stop, which might be something that
+        #No longer is in a state that can be touched without a segfault
+        try:
+            if i[0] in jackChannels:
+                del jackChannels[i[1]]
+        except:
+            pass
 
 def elementInfo(e):
     r=Gst.Registry.get()
@@ -158,9 +167,8 @@ def makeWeakrefPoller(selfref,exitSignal):
                 try:
                     with self.lock:
                         self.loopCallback()
-                        state = self.pipeline.get_state(1000000000)[1]
                     
-
+                        state = self.pipeline.get_state(1000000000)[1]
                     if not state==Gst.State.NULL:
                         self.wasEverRunning=True
 
@@ -169,64 +177,7 @@ def makeWeakrefPoller(selfref,exitSignal):
                         self.running=False
                         exitSignal.append(True)
                         return
-                        
-                    #Some of this other stuff should be threadsafe but isn't
-                    with self.lock:
-                        if self.systemTime:
-                            #Closed loop adjust the pipeline time.
-                            try:
-                                t = self.getPosition()
-                                m = time.monotonic()
 
-                                #adjust taking into account the desired rate
-                                sysElapsed = (m-self.startTime)/self.targetRate
-                                diff = t-sysElapsed
-                                #Igniore absurb vals
-                                if(abs(diff)< 60):
-                                    #Weighted towards the lower diff vals,
-                                    #We wanto to really ignore outliers, if they would cause
-                                    #a nonsense correction
-                                    if(abs(diff)<abs(avgDiff)):
-                                        avgDiff = (avgDiff*0.7) + (diff*0.3)
-                                    else:
-                                        avgDiff = (avgDiff*0.9) + (diff*0.1)
-                                #That flag says we just did a recent media
-                                # Seek and we need to get the remaining error
-                                #But we need to take into account the old remnant error
-                                #Which was used to make that adjustmennt.
-                                if computeRemnant:
-                                    lastRemnantError+=diff
-                                    computeRemnant=False
-                                needAdjust = False
-                                
-                                if t>5:
-                                    if (time.monotonic()-lastAdjustment)>10:
-                                        #Very slow feedback loop that tries to match the speeds
-                                        #The up and down rates are different on purpose, to increase precision
-                                        if avgDiff>0.030:
-                                            needAdjust=True
-                                            self.pipelineRate = self.pipelineRate*0.998
-                                        elif avgDiff<-0.30:
-                                            needAdjust=True 
-                                            self.pipelineRate= self.pipelineRate*1.005
-                                    
-                                
-            
-                                #We don't bother adjusting for things that barely
-                                #Even started, nor do we want to adjust for very short files. 
-                                if needAdjust:
-                                    lastAdjustment=time.monotonic()
-                                    #Don't actually set the target rate of anything like that
-                                    
-                                    #Apply an offset to the actual value we pass gstreamer, this lets us compensate for
-                                    #The small bit of lag in the seek.
-                                    self.seek(sysElapsed,rate=self.pipelineRate,_raw=True)
-                        
-                                    computeRemnant = True
-                            
-                            except:
-                                logging.exception("GST time sync error")
-                                continue
                 except:
                     #Todo actually handle some errors?
                     exitSignal.append(True)
@@ -567,7 +518,9 @@ class GStreamerPipeline():
     def stop(self):
         #Actually stop as soon as we can
         with self.lock:
-            self.pipeline.set_state(Gst.State.NULL)
+            #This was causing segfaults for some reasons
+            if not (self.pipeline.get_state(1000_000_000)[1]==Gst.State.NULL):
+                self.pipeline.set_state(Gst.State.NULL)
             self.exiting = True
             self.bus.set_sync_handler(None,0,None)
             if self.hasSignalWatch:
