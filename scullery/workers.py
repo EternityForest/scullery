@@ -30,10 +30,24 @@ lastWorkersError = 0
 backgroundFunctionErrorHandlers=[]
 
 
+
+def testLatency():
+    start = time.monotonic()
+    x=[0]
+    def f():
+        x[0]=time.monotonic()
+    do(f)
+
+    while time.monotonic()-start< 10:
+        time.sleep(0.0001)
+        if x[0]:
+            return x[0]-start
+    raise RuntimeError("No response")
+
 spawnLock = threading.RLock()
 
 maxWorkers = 32
-minWorkers=0
+minWorkers=4
 
 shutdownWait= 60
 run=True
@@ -79,13 +93,15 @@ def testIntegrity():
     with spawnLock:
         assert len(wakeupHandles)==len(workers)
 
-def makeWorker(e,q,id):
+lastStoppedThread = 0
+
+def makeWorker(e,q,id,fastMode=False):
     #one worker that just pulls tasks from the queue and does them. Errors are caught and
     #We assume the tasks have their own error stuff
-    e.on=True
-
     def workerloop():
         global workers
+        global lastStoppedThread
+        global wakeupHandles
 
         f=None
 
@@ -93,13 +109,15 @@ def makeWorker(e,q,id):
 
         lastActivity = time.monotonic()
 
+        runningState = [True]
+        handle = (e,runningState)
         with spawnLock:
-            wakeupHandlesMutable.append(e)
+            wakeupHandlesMutable.append(handle)
             wakeupHandles = wakeupHandlesMutable[:]
 
         while(run):
             try:
-                e.on=True
+                runningState[0]=True
                 #While either our direct  queue or the overflow queue has things in it we do them.
                 while(len(taskQueue)):
                     try:
@@ -110,6 +128,7 @@ def makeWorker(e,q,id):
                     if f:
                         try:
                             f[0](*f[1])
+                            lastActivity=time.monotonic()
                         except Exception:
                             global lastWorkersError
                             try:
@@ -129,13 +148,21 @@ def makeWorker(e,q,id):
                         finally:
                             #We do not want f staying around, if might hold references that should be GCed away immediatly
                             f=None
-                e.on=False
+                #Ensure the lock is acqured so we can sto the next time
+                #We try in blocking mode
+                e.acquire(False)
+                runningState[0]=False
 
-                e.clear()
-                e.wait(timeout=1)
+                #This check happens *after* setting e.on false, so that if we
+                #set it false right after they checked and put something in
+                #the queue we get it next loop
+                if not taskQueue:
+                    #Randomize, so they don't all sync up
+                    #FastMode polls at 100Hz
+                    x = e.acquire(timeout=(random.random()*2) if not fastMode else 0.01)
+                    runningState[0]=True
 
-
-                if not e.is_set():
+                if not x and not taskQueue:
                     if not shouldRun:
                         return
 
@@ -144,13 +171,26 @@ def makeWorker(e,q,id):
                         #The elements of handle are never copied anywhere,
                         #Once the list is clear, we can be sure there is no further inserts, and the next round will catch almost
                         #all race conditions. Any remaining one in a million ones will be caught in 1 second
-                        with spawnLock:
-                            if len(workers)>minWorkers:
-                                shouldRun=None
-                                del workersMutable[id]
-                                workers = workersMutable.copy()
-                                wakeupHandlesMutable.remove(e)
-                                wakeupHandles = wakeupHandlesMutable[:]
+                        if lastActivity<(time.monotonic()-10):
+                            with spawnLock:
+                                if len(workers)>minWorkers :
+                                    #Only stop one thread per 5 seconds to prevent
+                                    #chattering
+
+                                    #Also don't stop a thread when there aren't at least
+                                    #2 threads that aren't busy.
+                                    unbusyCount = 0
+                                    for i in wakeupHandles:
+                                        if not i[1][0]:
+                                            unbusyCount+=1
+
+                                    if unbusyCount>2 and lastStoppedThread< (time.monotonic()-5):
+                                        lastStoppedThread=time.monotonic()
+                                        shouldRun=None
+                                        del workersMutable[id]
+                                        workers = workersMutable.copy()
+                                        wakeupHandlesMutable.remove(handle)
+                                        wakeupHandles = wakeupHandlesMutable[:]
             except:
                 print("Exception in worker loop: "+traceback.format_exc(6))
 
@@ -162,8 +202,11 @@ def addWorker():
     global workers
     with spawnLock:
         q = []
-        e = threading.Event()
+        e = threading.Lock()
+        e.acquire()
+
         id = time.time()
+        #First worker always polls at 100hz 
         t = threading.Thread(target = makeWorker(e,q,id), name = "ThreadPoolWorker-"+str(id))
         workersMutable[id] = t
         t.start()
@@ -177,24 +220,46 @@ def do(func,args=[]):
     """
 
     taskQueue.append((func,args))
-    for i in wakeupHandles:
-        if not i[0].on:
-            i[0].set()
-            return
 
-    #Sleep 1/100th of a second for every item in the queue past the max number of threads
+    for i in wakeupHandles:
+        try:
+            if i[0].locked():
+                i[0].release()
+                return
+        except RuntimeError:
+            pass
+   
+
+    #Sleep 1/25000th of a second for every item in the queue past the max number of threads
     #In an attempt to rate limit
     if len(taskQueue)>maxWorkers:
-        time.sleep(max(0, (len(taskQueue)-maxWorkers)/100  ))
+        time.sleep(max(0, (len(taskQueue)-maxWorkers)/25000  ))
 
     #No unbusy threads? It must go in the overflow queue.
     #Soft rate limit here should work a bit better than the old hard limit at keeping away
     #the deadlocks.
-
     #Under lock
     with spawnLock:
         if len(workers)< maxWorkers:
             addWorker()
+            return
+
+    #If we can't spawn a new thread
+    #Wait a maximum of 15ms before 
+    #just giving up and leaving 
+    #it for when somethin
+    #wakes up
+    for n in range(0,25):
+        if not taskQueue:
+            return
+        for i in wakeupHandles:
+            try:
+                if i[0].locked():
+                    i[0].release()
+                    return
+            except RuntimeError:
+                pass
+        time.sleep(0.0005)
 
 
     
