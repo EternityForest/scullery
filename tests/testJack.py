@@ -17,8 +17,10 @@ class Player(scullery.iceflow.GstreamerPipeline):
 
 
 scullery.jack.startManaging()
-#We call this manually, but it's not going to auto reconnect.
-scullery.jack.startJackServer()
+
+#We call this manually, because we didn't set manageJackProcess
+#So it won't actually auto manage the server itself
+scullery.jack._startJackProcess()
 
 class TestJackAudio(unittest.TestCase):
     def test_airwire(self):
