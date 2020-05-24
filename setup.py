@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scullery",
-    version="0.1.1",
+    version="0.1.3",
     author="Daniel Dunn",
     author_email="dannydunn@eternityforest.com",
     description="A utility library based on KaithemAutomation featuring a GStreamer wrapper",
@@ -23,6 +23,7 @@ setuptools.setup(
           'pyyaml',
           'typeguard',
           "sf2utils",
-          "pyFluidSynth"
+          "pyFluidSynth",
+          "paho-mqtt"
       ],
 )
