@@ -46,13 +46,16 @@ class PILCapture():
 
         return self.img.frombytes("RGB", (w, h), buf.extract_dup(0, buf.get_size()))
 
+
+
 class PILSource():
-    def __init__(self,appsrc):
-    
+    def __init__(self,appsrc,greyscale=False):
         self.appsrc=appsrc
+        self.greyscale = greyscale
+
 
     def push(self,img):
-        img = img.tobytes("raw","rgb")
+        img = img.tobytes("raw","L" if self.greyscale else "rgb")
         img = Gst.Buffer.new_wrapped(img)
         self.appsrc.emit("push-buffer", img)
 
@@ -477,13 +480,13 @@ class GStreamerPipeline():
             self._waitForState(Gst.State.PLAYING,timeout)
             self.running=True
 
-            for i in range(0,50):
+            for i in range(0,500):
                 try:
                     #Test that we can actually read the clock
                     self.getPosition()
                     break
                 except:
-                    if i>48:
+                    if i>150:
                         raise RuntimeError("Clock still not valid")
                     time.sleep(0.1)
 
@@ -607,15 +610,22 @@ class GStreamerPipeline():
 
         return PILCapture(appsink)
 
-
-    def addPILSink(self,resolution,connectToOutput=None, buffer=1):
+    def addPILSource(self,resolution, buffer=1,greyscale=False):
         "Return a video source object that we can use to put PIL buffers into the stream"
 
-        appsrc = self.addElement("appsrc",caps="video/x-raw,width="+str(resolution[0])+",height="+str(resolution[0])+", format=RGB",sync=False)
-        conv = self.addElement("videoconvert",connectToOutput=connectToOutput)
+        appsrc = self.addElement("appsrc",caps="video/x-raw,width="+str(resolution[0])+",height="+str(resolution[0])+", format="+"GREy8" if greyscale else "RGB",connectToOutput=False)
+        conv = self.addElement("videoconvert")
         scale=self.addElement("videoscale")
 
-        return PILSource(appsrc)
+        #Start with a blck image to make things prerooll
+        if(greyscale):
+            appsrc.emit("push-buffer", Gst.Buffer.new_wrapped(bytes(resolution[0]*resolution[1])))
+        else:
+            appsrc.emit("push-buffer",Gst.Buffer.new_wrapped( bytes(resolution[0]*resolution[1]*3)))
+
+      
+
+        return PILSource(appsrc,greyscale)
     
     def addElement(self,t,name=None,connectWhenAvailable=False, connectToOutput=None, sidechain=False, **kwargs):
 
@@ -649,7 +659,7 @@ class GStreamerPipeline():
                     raise ValueError("Cannot connect to the output of: "+str(connectToOutput)+", no such element in pipeline.")
 
             #This could be the first element
-            if self.elements:
+            if self.elements and (not (connectToOutput is False)):
                 connectToOutput=connectToOutput or self.elements[-1]
                 #Decodebin doesn't have a pad yet for some awful reason
                 if (self.elementTypesById[id(connectToOutput)]=='decodebin') or connectWhenAvailable:

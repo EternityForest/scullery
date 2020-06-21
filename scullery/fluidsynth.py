@@ -13,7 +13,7 @@
 #You should have received a copy of the GNU General Public License
 #along with Scullery.  If not, see <http://www.gnu.org/licenses/>.
 
-import time,weakref,os,logging
+import time,weakref,os
 gmInstruments = None
 
 players = weakref.WeakValueDictionary()
