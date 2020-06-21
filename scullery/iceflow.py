@@ -46,7 +46,15 @@ class PILCapture():
 
         return self.img.frombytes("RGB", (w, h), buf.extract_dup(0, buf.get_size()))
 
+class PILSource():
+    def __init__(self,appsrc):
+    
+        self.appsrc=appsrc
 
+    def push(self,img):
+        img = img.tobytes("raw","rgb")
+        img = Gst.Buffer.new_wrapped(img)
+        self.appsrc.emit("push-buffer", img)
 
 def link(a,b):
     unref = False
@@ -436,10 +444,10 @@ class GStreamerPipeline():
         t=time.monotonic()
         while not self.pipeline.get_state(1000_000_000)[1]==s:
             if time.monotonic()-t> timeout:
-                raise RuntimeError("Timeout")
+                raise RuntimeError("Timeout, pipeline still in: ", self.pipeline.get_state(1000_000_000)[1])
             time.sleep(0.1)
 
-    def start(self, effectiveStartTime=None):
+    def start(self, effectiveStartTime=None,timeout=10):
         "effectiveStartTime is used to keep multiple players synced when used with systemTime"
         with self.lock:
             if self.exiting:
@@ -466,7 +474,7 @@ class GStreamerPipeline():
                 self.seek(time.monotonic()-self.startTime)
 
             self.pipeline.set_state(Gst.State.PLAYING)
-            self._waitForState(Gst.State.PLAYING)
+            self._waitForState(Gst.State.PLAYING,timeout)
             self.running=True
 
             for i in range(0,50):
@@ -598,8 +606,18 @@ class GStreamerPipeline():
         appsink = self.addElement("appsink",drop=True,sync=False,max_buffers=buffer)
 
         return PILCapture(appsink)
+
+
+    def addPILSink(self,resolution,connectToOutput=None, buffer=1):
+        "Return a video source object that we can use to put PIL buffers into the stream"
+
+        appsrc = self.addElement("appsrc",caps="video/x-raw,width="+str(resolution[0])+",height="+str(resolution[0])+", format=RGB",sync=False)
+        conv = self.addElement("videoconvert",connectToOutput=connectToOutput)
+        scale=self.addElement("videoscale")
+
+        return PILSource(appsrc)
     
-    def addElement(self,t,name=None,connectWhenAvailable=False, connectToOutput=None, **kwargs):
+    def addElement(self,t,name=None,connectWhenAvailable=False, connectToOutput=None, sidechain=False, **kwargs):
 
         #Don't let the user use JACK if it's not running,
         #For fear of gstreamer undefined behavior
@@ -643,7 +661,16 @@ class GStreamerPipeline():
                     connectToOutput.connect("pad-added",f,1)
                 else:
                     link(connectToOutput,e)
-            self.elements.append(e)
+            
+            #Sidechain means don't set this element as the
+            #automatic thing that the next entry links to
+            if not sidechain:
+                self.elements.append(e)
+            else:
+                x = self.elements[-1]
+                self.elements[-1]= e
+                self.elements.append(x)
+
             self.namedElements[name]=e
 
             #Mark as a JACK user so we can stop if needed for JACK

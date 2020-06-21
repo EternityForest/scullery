@@ -1,152 +1,70 @@
-import re,os,logging,subprocess,weakref, shutil,threading,uuid, select,time
 
-def readAllSoFar(pipe, retVal=b''): 
-  counter = 1024
-  while counter:
-    x =(select.select([pipe],[],[],0.1)[0])
-    if x:   
-        retVal+=pipe.read(1)
-    else:
-        break
-    counter -=1
-  return retVal
+from . thirdparty import baresipy
+import weakref
+from . import jack
+import time
 
-def makePollerThread(a):
-    a=weakref.ref(a)
-    def f():
-        while 1:
-            try:
-                d = a()
-                if d:
-                    if not d.poll():
-                        break
-                else:
-                    break
-            except:
-                logging.exception("Error in SIP manager thread")
-    return f
-                
-                
-tmpdir = "/dev/shm/"
+def wrapFunction(f):
+    f = weakref.ref(f)
 
-class LocalSipAgent():
-    def __init__(self, username, audiodriver="alsa", audioport="default",port=5060):
-        self.pollf = makePollerThread(self)
-        self.pollt = threading.Thread(target=self.pollf,daemon=True)
-        self.running= True
+    def f2(*a,**k):
+        f(*a,**k)
+    return f2
+
+
+class LocalBareSIP(baresipy.BareSIP):
+    def __init__(self,*a, jackSink=None, jackSource=None,**k):
+        super().__init__(pwd='', gateway='',*a,**k)
+        self.jackSink = jackSink
+        self.jackSource = jackSource
+
+        self.useJack = jackSink or jackSource
+        self.mostRecentCall = ''
+        self.jackName = "baresip"
+
+    def call(self, number):
+        self.mostRecentCall= number
+        super().call(self,number)
+
+    def handle_incoming_call(self, number):
+        time.sleep(0.1)
+        self.controller().onIncomingCall(number)
+        self.mostRecentCall = number
+
+    def handle_call_established(self):
+        if self.useJack:
+            self.controller().inJackAirwire = jack.Airwire(self.jackSource, self.jackName)
+            self.controller().outJackAirwire = jack.Airwire(self.jackSink, self.jackName)
+            self.controller().onIncomingCall(self.mostRecentCall)
+
     
-        self.buf = b''
-        
-        cnfdir = os.path.join(tmpdir, "ScullerySIP"+str(port))
-        self.cnfdir=cnfdir
-        try:
-            #Remove any existing
-            shutil.rmtree(self.cnfdir)
-        except:
-            pass
+    def onJackEstablished(self, name):
+        if self.useJack:
+            self.controller().inJackAirwire = jack.Airwire(self.controller().jackSource, self.jackName)
+            self.controller().outJackAirwire = jack.Airwire(self.controller().jackSink, self.jackName)
 
 
 
-        os.mkdir(os.path.join(tmpdir, "ScullerySIP"+str(port)))
-
-
-        
-        self.cnfdir = cnfdir
-        #Using the template, create a configuration dir for
-        #the baresip instance we are about to make.
-        f = os.path.join(os.path.dirname(__file__),"baresip_template")
-        
-        for i in os.listdir(f):
-            with open(os.path.join(f,i)) as fd:
-                x  = fd.read()
-                
-            x=x.replace("USERNAME", username)
-            x=x.replace("AUDIODRIVER", audiodriver)
-            x=x.replace("AUDIOPORT", audioport)
-            x=x.replace("PORT", str(port))
-
-            with open(os.path.join(cnfdir,i),"w") as fd:
-                fd.write(x)
-
-        self.p = subprocess.Popen(['baresip','-f', self.cnfdir],stdin=subprocess.PIPE, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
-        self.pollt.start()
-
-    def poll(self):
-        self.onBytesFromProcess(readAllSoFar(self.p.stdout))
-        err = readAllSoFar(self.p.stderr)
-        print("err", err)
-        
-        return self.running
-
-
+class SipUserAgent():
+    def __init__(self,username, audioDriver="alsa,default", port=5060, jackSource=None, jackSink=None):
+        super().__init__()
+        self.agent = LocalBareSIP(username, audiodriver=audioDriver, 
+            port=port, jackSource=jackSource, jackSink=jackSink,block=False)
+        self.agent.controller = weakref.ref(self)
+    
     def __del__(self):
-        try:
-            self.close()
-        except:
-            pass
+        self.agent.quit()
 
-    def close(self):
-        self.running =False
-        self.process.terminate()
-        shutil.rmtree(self.cnfdir)
-        
+    def call(self,number):
+        self.agent.call(number)
 
-    def onBytesFromProcess(self,b):
-        self.buf+=b
-        
-        if b'\n' in self.buf:
-            data, self.buf = self.buf.split(b"\n",1)
-            self.onProcessLine(data)
-            
-    def onProcessLine(self,line):
-        print(line)
-        if b'terminated' in line or b'closed' in line:
-            self.currentcall = None
-            
-        line= line.decode(errors="replace")
-        
-        incoming = re.search(r"Incoming call from: (.*?) sip\:(.*?)\@(.*?) \-",line)
-        if incoming:
-            displayName = incoming.groups(1)
-            username = incoming.groups(2)
-            hostname = incoming.groups(3)
-            self.incoming=(displayName,hostname,username)
-            self.onIncomingCall(displayName, username, hostname)
-            
-            
-        evt = re.search(r"received event\: *?\'(.*?)\'", line)
-        
-        if evt:
-            self.onDTMF(evt.groups(0))
-            
-            
-        
-    def onDTMF(self, code):
-        pass
-    
-    def onIncomingCall(self, displayName, username, hostname):
-        pass
-    
-    def onCallStart(self,displayName,username,hostname):
-        pass
-    
-    def onCallEnd(self):
-        pass
-    
+    def onIncomingCall(self,number):
+        print(number)
+        self.accept()
+        time.sleep(8)
+        self.accept()
+
     def accept(self):
-        self.onCallStart(*self.incoming)
-        pass
-    
-    def reject(self):
-        pass
-    
-    def call(self, other):
-        pass
-    
-    def end(self,other):
-        pass
+        self.agent.accept_call()
 
 
-s = LocalSipAgent("danny")
-
-time.sleep(60)
