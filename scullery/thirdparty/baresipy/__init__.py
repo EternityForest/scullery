@@ -31,6 +31,11 @@ class BareSIP(Thread):
         self.user = user
         self.pwd = pwd
         self.gateway = gateway
+
+        #Learn the second one when it has to reasign a unique name
+        #There is an in and an out client name
+        self.jackNames = ['baresip']
+
         if tts:
             self.tts = tts
         else:
@@ -328,7 +333,12 @@ class BareSIP(Thread):
             self.handle_audio_stream_failure()
 
     def onJackAssigned(self,cname):
-        pass
+        if not cname in self.jackNames:
+            self.jackNames.append(cname)
+            #We only have 2, if there are more, 
+            #it means the default has been reassigned
+            if len(self.jackNames)>2:
+                self.jackNames.pop(0)
 
     def on_audio_rtp(self,rtp):
         pass
@@ -425,8 +435,10 @@ class BareSIP(Thread):
                         self.handle_call_status(status)
                         self._call_status = status
 
-                    elif match:= re.search(r"jack: unique name (.*?) assigned", out):
-                        self.onJackAssigned(match.groups(1))
+                    elif 'jack' in out: 
+                        match = re.search(r"jack: unique name \`(.*?)\' assigned", out)
+                        if match:
+                            self.onJackAssigned(match.groups(1)[0])
                     
                     elif "--- List of active calls (1): ---" in \
                             self._prev_output:

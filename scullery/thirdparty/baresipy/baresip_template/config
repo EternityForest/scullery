@@ -216,4 +216,6 @@ ice_mode		full	# {full,lite}
 #ringback_disabled	yes
 #statmode_default	off
 
-jack_connect_ports
+jack_connect_ports		no
+
+
