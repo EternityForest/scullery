@@ -77,7 +77,7 @@ def makeThread(f):
 
 
 class Connection():
-    def __init__(self, server, port=1883, *, alertPriority="info", alertAck=True):
+    def __init__(self, server, port=1883, alertPriority="info", alertAck=True):
         self.server = server
         self.port = port
         self.lock = threading.Lock()

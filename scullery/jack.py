@@ -72,7 +72,13 @@ prevJackStatus=False
 #Default settings
 jackPeriods = 3
 periodSize = 512
+jackDevice = "hw:0,0"
 
+useAdditionalSoundcards = 'yes'
+
+#Make sure the alsa_in manager knows what we select as the primary, so that
+#It doesn't get stepped on
+currentPrimaryDevice = "hw:0,0"
 #These apply to soundcards other than the main system card
 usbPeriodSize = -1
 usbPeriods = -1
@@ -344,22 +350,23 @@ class CombiningAirwire(MultichannelAirwire):
         f,t=self._getEndpoints()
         if not f:
             return
-        with lock:
-            outPorts = _jackclient.get_ports(f+":*",is_output=True,is_audio=True)
+        if lock.acquire(timeout=10):
+            try:
+                outPorts = _jackclient.get_ports(f+":*",is_output=True,is_audio=True)
+                
+                if not ":" in t:
+                    t+=":*"
+                inPorts = _jackclient.get_ports(t,is_input=True,is_audio=True)
             
-            if not ":" in t:
-                t+=":*"
-            inPorts = _jackclient.get_ports(t,is_input=True,is_audio=True)
-          
 
-            #Connect all the ports
-            for i in outPorts:
-                for j in inPorts:
-                    if not isConnected(i.name,j.name):
-                        connect(i,j)
-                  
-
-
+                #Connect all the ports
+                for i in outPorts:
+                    for j in inPorts:
+                        if not isConnected(i.name,j.name):
+                            connect(i,j)
+                    
+            finally:
+                lock.release()
 
 
     def disconnect(self):
@@ -367,30 +374,39 @@ class CombiningAirwire(MultichannelAirwire):
         if not f:
             return
 
-        with lock:
-            outPorts = _jackclient.get_ports(f+":*",is_output=True,is_audio=True)
-        
-            if not ":" in t:
-                t+=":*"
-            inPorts = _jackclient.get_ports(t)
-            if not inPorts:
-                return
+        if lock.acquire(timeout=10):
+            try:
+                outPorts = _jackclient.get_ports(f+":*",is_output=True,is_audio=True)
+            
+                if not ":" in t:
+                    t+=":*"
+                inPorts = _jackclient.get_ports(t)
+                if not inPorts:
+                    return
 
-            #Disconnect all the ports
-            for i in outPorts:
-                    for j in inPorts:
-                        if isConnected(i.name,j.name):
-                            try:
-                                disconnect(i,j)
-                            except:
-                                print(traceback.format_exc())
-                            try:
-                                del activeConnections[i.name,j.name]
-                            except KeyError:
-                                pass
+                #Disconnect all the ports
+                for i in outPorts:
+                        for j in inPorts:
+                            if isConnected(i.name,j.name):
+                                try:
+                                    disconnect(i,j)
+                                except:
+                                    print(traceback.format_exc())
+                                try:
+                                    del activeConnections[i.name,j.name]
+                                except KeyError:
+                                    pass
+            finally:
+                lock.release()
 
 
 def Airwire(f,t,forceCombining=False):
+
+    #Can't connect to nothing, for now lets use a hack and make these nonsense
+    #names so emoty strings don't connect to stuff
+    if not f or not t:
+        f="jdgdsjfgkldsf"
+        t="dsfjgjdsfjgkl"
     if forceCombining:
         return CombiningAirwire(f,t) 
     elif f==None or t==None:
@@ -413,11 +429,10 @@ def onPortConnect(a,b,connected):
                 _realConnections[a.name, b.name]=True
             else:
                 _realConnections[b.name, a.name]=True
-           
+        
             realConnections=_realConnections.copy()
 
     if not connected:
-        log.debug("JACK port "+ a.name+" disconnected from "+b.name)
         i = (a.name,b.name)
         with realConnectionsLock:
             if (a.name,b.name) in _realConnections:
@@ -445,8 +460,14 @@ def onPortConnect(a,b,connected):
                 del activeConnections[i]
             except:
                 pass
-    else:
-        log.debug("JACK port "+ a.name+" connected to "+b.name)
+
+        # def f():
+        #     if not connected:
+        #         log.debug("JACK port "+ a.name+" disconnected from "+b.name)
+        #     else:
+        #         log.debug("JACK port "+ a.name+" connected to "+b.name)
+
+        # workers.do(f)
 
 class PortInfo():
     def __init__(self, name,isInput,sname):
@@ -458,30 +479,30 @@ class PortInfo():
 
 
 def onPortRegistered(port,registered):
-    global realConnections
-    "Same function for register and unregister"
-    if not port:
-        return
+    try:
+        global realConnections
+        "Same function for register and unregister"
+        if not port:
+            return
 
-    p = PortInfo(port.name, port.is_input,port.shortname)
+        p = PortInfo(port.name, port.is_input,port.shortname)
 
-    if registered:
-        log.debug("JACK port registered: "+port.name)
-        messagebus.postMessage("/system/jack/newport",p )
-    else:
-        torm = []
-        with realConnectionsLock:
-            for i in _realConnections:
-                if i[0]==port.name or i[1]==port.name:
-                    torm.append(i)
-            for i in torm:
-                del _realConnections[i]
-            realConnections=_realConnections.copy()
+        if registered:
+            #log.debug("JACK port registered: "+port.name)
+            messagebus.postMessage("/system/jack/newport",p )
+        else:
+            torm = []
+            with realConnectionsLock:
+                for i in _realConnections:
+                    if i[0]==port.name or i[1]==port.name:
+                        torm.append(i)
+                for i in torm:
+                    del _realConnections[i]
+                realConnections=_realConnections.copy()
 
-        log.debug("JACK port unregistered: "+port.name)
-        messagebus.postMessage("/system/jack/delport",p)
-
-
+            messagebus.postMessage("/system/jack/delport",p)
+    except:
+        print(traceback.format_exc())
 
 ############################################################################
 ####################### This section manages the actual sound IO and creates jack ports
@@ -687,9 +708,17 @@ def assignName(locator,longname, usedFirstWords,pciNumbers):
     #In the second step
     h = first+second
     return h
+
 def generateJackName(words,longname, numberstring,  taken, taken2):
     "Generate a name suitable for direct use as a jack client name"
     n = cleanupstring(longname)
+    n =n.lower()
+
+    #You can probably see why using the first four letters of this would be
+    #Unprofessional and not informative.
+    if n.startswith("analog"):
+        n = "anlg"
+
     jackname =n[:4]+'_'+words
     jackname+=numberstring
     jackname=jackname[:28]
@@ -818,6 +847,22 @@ def readAllErrSoFar(proc, retVal=b''):
     counter -=1
   return retVal
 
+
+
+def getPersistentCardNames():
+    "Get a simple dict mapping persistent name to ALSA name, for all cards"
+    i,o,x = listSoundCardsByPersistentName()
+
+    d = {}
+
+    for c in i:
+        d[c] = i[c][0]
+    for c in o:
+        d[c] = o[c][0]
+
+    return d
+
+
 def listSoundCardsByPersistentName():
     """
         Only works on linux or maybe mac
@@ -941,9 +986,12 @@ lastJackStartAttempt=0
 def _stopJackProcess():
     global _jackclient,jackp
     import subprocess
+    from . import fluidsynth
     log.info("Stopping JACK and all related processes")
     #Get rid of old stuff
     iceflow.stopAllJackUsers()
+    fluidsynth.stopAll()
+
     try:
         subprocess.call(['killall','alsa_in'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
     except:
@@ -987,6 +1035,8 @@ def _startJackProcess(p=None, n=None,logErrs=True):
     global jackp
     global periodSize
     global jackPeriods
+    global jackDevice
+    global currentPrimaryDevice 
 
     period = p or periodSize
     jackPeriods = n or jackPeriods
@@ -1026,10 +1076,24 @@ def _startJackProcess(p=None, n=None,logErrs=True):
         settingsReloader()
 
         lastJackStartAttempt=time.monotonic()
+
+        useDevice = "hw:0,0"
+        
+        #If the user supplied a perisistent name, translate it.
+        if jackDevice:
+            incards,outcards, x= listSoundCardsByPersistentName()
+            if jackDevice in incards:
+                useDevice = incards[jackDevice][0]
+
+            if jackDevice in outcards:
+                useDevice = outcards[jackDevice][0]
+        
+        currentPrimaryDevice = useDevice
+
         if realtimePriority:
-            cmdline = ['jackd', '-S', '--realtime', '-P' ,str(realtimePriority) ,'-d', 'alsa' ,'-d' ,'hw:0,0' ,'-p' ,str(period), '-n' ,str(jackPeriods) ,'-r','48000']
+            cmdline = ['jackd','-S', '--realtime', '-P' ,str(realtimePriority) ,'-d', 'alsa' ,'-d' ,useDevice ,'-s','-p' ,str(period), '-n' ,str(jackPeriods) ,'-r','48000']
         else:
-            cmdline = ['jackd', '-S', '--realtime' ,'-d', 'alsa' ,'-d' ,'hw:0,0' ,'-p' ,str(period), '-n' ,str(jackPeriods) ,'-r','48000']
+            cmdline = ['jackd', '-S', '--realtime' ,'-d', 'alsa' ,'-d' ,useDevice ,'-p' ,str(period),'-s', '-n' ,str(jackPeriods) ,'-r','48000']
         logging.info("Attempting to start JACKD server with: \n"+' '.join(cmdline))
 
         jackp = subprocess.Popen(cmdline,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE, stderr=subprocess.PIPE,env=my_env)
@@ -1102,6 +1166,12 @@ def _startJackProcess(p=None, n=None,logErrs=True):
            
             if util.which("a2jmidid"):
                 midip = subprocess.Popen("a2jmidid -e",stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True,stdin=subprocess.DEVNULL) 
+            else:
+                logging.error("a2jmidid not installed, MIDI may not work as expected.")
+
+            from . import fluidsynth
+            fluidsynth.remakeAll()
+
         workers.do(f)
 
 
@@ -1133,226 +1203,457 @@ def handleManagedSoundcards():
     global oldo
     global oldmidis
     global lastFullScan
+    global useAdditionalSoundcards
 
     #There seems to be a bug in reading errors from the process
     #Right now it's a TODO, but most of the time
     #we catch things in the add/remove detection anyway
-    with lock:
-        try:
-            tr =[]
-            for i in alsa_out_instances:
-                
-                x=readAllSoFar(alsa_out_instances[i])
-                e=readAllErrSoFar(alsa_out_instances[i])
-                problem = b"err =" in x+e or alsa_out_instances[i].poll()
-                problem = problem or b"busy" in (x+e) 
-
-                if problem:
-                    log.error("Error in output "+ i +(x+e).decode("utf8") +" status code "+str(alsa_out_instances[i].poll()))
-                    closeAlsaProcess(alsa_out_instances[i])
-                    tr.append(i)
-                    #We have to delete the busy stuff but we can
-                    #retry later
-                    if b"busy" in (x+e):
-                        toretry_out[i]=time.monotonic()+5
-                    elif b"No such" in (x+e):
-                        toretry_out[i]=time.monotonic()+10
-                        log.error("Nonexistant card "+i)
-                    else:
-                        toretry_out[i]=time.monotonic()
-
-                    log.info("Removed "+i+"o")
-
-                elif not alsa_out_instances[i].poll()==None:
-                    tr.append(i)
-                    log.info("Removed "+i+"o")
-
-            for i in tr:
-                try_stop(alsa_out_instances[i])
-                del alsa_out_instances[i]
-
-            tr =[]
-            for i in alsa_in_instances:
-                
-                x= readAllSoFar(alsa_in_instances[i])
-                e=readAllErrSoFar(alsa_in_instances[i])
-                problem = b"err =" in x+e or alsa_in_instances[i].poll()
-                problem = problem or b"busy" in (x+e) 
-                if problem :
-                    log.error("Error in input "+ i +(x+e).decode("utf8") +" status code "+str(alsa_in_instances[i].poll()))
-                    closeAlsaProcess(alsa_in_instances[i])   
-                    tr.append(i)
-                    if b"busy" in (x+e):
-                        toretry_in[i]=time.monotonic()+5
+    if lock.acquire(timeout=10):
+        try:     
+            try:
+                tr =[]
+                for i in alsa_out_instances:
                     
-                    if b"No such" in (x+e):
-                        toretry_in[i]=time.monotonic()+10
-                        log.error("Nonexistant card "+i)
-                    else:
-                        toretry_out[i]=time.monotonic()
+                    x=readAllSoFar(alsa_out_instances[i])
+                    e=readAllErrSoFar(alsa_out_instances[i])
+                    problem = b"err =" in x+e or alsa_out_instances[i].poll()
+                    problem = problem or b"busy" in (x+e) 
 
-                    log.info("Removed "+i+"i")
+                    if problem:
+                        log.error("Error in output "+ i +(x+e).decode("utf8") +" status code "+str(alsa_out_instances[i].poll()))
+                        closeAlsaProcess(alsa_out_instances[i])
+                        tr.append(i)
+                        #We have to delete the busy stuff but we can
+                        #retry later
+                        if b"busy" in (x+e):
+                            toretry_out[i]=time.monotonic()+5
+                        elif b"No such" in (x+e):
+                            toretry_out[i]=time.monotonic()+10
+                            log.error("Nonexistant card "+i)
+                        else:
+                            toretry_out[i]=time.monotonic()
 
-                elif not alsa_in_instances[i].poll()==None:
-                    tr.append(i)
-                    log.info("Removed "+i+"i")
+                        log.info("Removed "+i+"o")
 
-            for i in tr:
-                try_stop(alsa_in_instances[i])
-                del alsa_in_instances[i]
-        except:
-            print(traceback.format_exc())
+                    elif not alsa_out_instances[i].poll()==None:
+                        tr.append(i)
+                        log.info("Removed "+i+"o")
+
+                for i in tr:
+                    try_stop(alsa_out_instances[i])
+                    del alsa_out_instances[i]
+
+                tr =[]
+                for i in alsa_in_instances:
+                    
+                    x= readAllSoFar(alsa_in_instances[i])
+                    e=readAllErrSoFar(alsa_in_instances[i])
+                    problem = b"err =" in x+e or alsa_in_instances[i].poll()
+                    problem = problem or b"busy" in (x+e) 
+                    if problem :
+                        log.error("Error in input "+ i +(x+e).decode("utf8") +" status code "+str(alsa_in_instances[i].poll()))
+                        closeAlsaProcess(alsa_in_instances[i])   
+                        tr.append(i)
+                        if b"busy" in (x+e):
+                            toretry_in[i]=time.monotonic()+5
+                        
+                        if b"No such" in (x+e):
+                            toretry_in[i]=time.monotonic()+10
+                            log.error("Nonexistant card "+i)
+                        else:
+                            toretry_out[i]=time.monotonic()
+
+                        log.info("Removed "+i+"i")
+
+                    elif not alsa_in_instances[i].poll()==None:
+                        tr.append(i)
+                        log.info("Removed "+i+"i")
+
+                for i in tr:
+                    try_stop(alsa_in_instances[i])
+                    del alsa_in_instances[i]
+            except:
+                print(traceback.format_exc())
+                
 
 
 
-        ##HANDLE CREATING AND GC-ING things
-        inp,op,midis = listSoundCardsByPersistentName()
-        #This is how we avoid constantky retrying to connect the same few
-        #clients that fail, which might make a bad periodic click that nobody
-        #wants to hear.
-        startPulse = False
-        if (inp,op,midis)==(oldi,oldo,oldmidis):
+            ##HANDLE CREATING AND GC-ING things
+            inp,op,midis = listSoundCardsByPersistentName()
 
-            #However some things we need to retry.
-            #Device or resource busy being the main one
+            #Ignore all except MIDI
+            if not useAdditionalSoundcards.lower() in ("true","yes",'on'):
+                inp = {}
+                op = {}
+
+            #This is how we avoid constantky retrying to connect the same few
+            #clients that fail, which might make a bad periodic click that nobody
+            #wants to hear.
+            startPulse = False
+            if (inp,op,midis)==(oldi,oldo,oldmidis):
+
+                #However some things we need to retry.
+                #Device or resource busy being the main one
+                for i in inp:
+                    if i in toretry_in:
+                        if time.monotonic() < toretry_in[i]:
+                            continue
+                        del toretry_in[i]
+                        if not i in alsa_in_instances:
+                            #Pulse likes to take over cards so we have to stop it, take the card, then start it. It sucks
+                            startPulse = True
+                            try:
+                                subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
+                            except:
+                                print(traceback.format_exc())
+                            time.sleep(2)
+
+                            log.debug("Starting alsa_in process, for "+inp[i][0])
+                            x = subprocess.Popen(["alsa_in"]+getIOOptionsForAdditionalSoundcard()+["-d", inp[i][0], "-j",i+"i"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                            try:
+                                subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                            except:
+                                log.exception("Error getting RT")
+        
+                            alsa_in_instances[i]=x
+                            log.info("Added "+i+"i at"+inp[i][1])
+
+                for i in op:
+                    if i in toretry_out:
+                        if time.monotonic() < toretry_out[i]:
+                            continue
+                        del toretry_out[i]
+                        if not i in alsa_out_instances:
+                            startPulse=True
+                            try:
+                                subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
+                            except:
+                                print(traceback.format_exc())
+
+                            log.debug("Starting alsa_out process for "+op[i][0])
+                            x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+"o"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                            alsa_out_instances[i]=x
+
+                            try:
+                                subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                            except:
+                                log.exception("Error getting RT")
+                            log.info("Added "+i+"o")
+                
+                #If we stopped it, start it again
+                if startPulse:
+                    try:
+                        setupPulse()
+                    except:
+                        log.exception("Error restarting pulse, ignoring")
+                if lastFullScan> time.monotonic()-10:
+                    return
+                lastFullScan = time.monotonic()
+            oldi,oldo,oldmidis =inp,op,midis
+
+            #Look for ports with the a2jmidid naming pattern and give them persistant name aliases.
+            x = _jackclient.get_ports(is_midi=True)
+            for i in midis:
+                for j in x:
+                    number = "["+str(midis[i][1])+"]"
+                    if number in j.name:
+                        if i[0] in j.name:
+                            try:
+                                if not i in j.aliases:
+                                    j.set_alias(i)
+                            except:
+                                log.exception("Error setting MIDI alias")
+
+
             for i in inp:
-                if i in toretry_in:
-                    if time.monotonic() < toretry_in[i]:
-                        continue
-                    del toretry_in[i]
+                #HDMI doesn't do inputs as far as I know
+                if not i.startswith("HDMI"):
                     if not i in alsa_in_instances:
-                        #Pulse likes to take over cards so we have to stop it, take the card, then start it. It sucks
-                        startPulse = True
-                        try:
-                            subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
-                        except:
-                            print(traceback.format_exc())
-                        time.sleep(2)
+                        if inp[i][0]== currentPrimaryDevice:
+                            #We don't do an alsa in for this card because it
+                            #Is already the JACK backend
+                            if usingDefaultCard:
+                                continue
 
-                        log.debug("Starting alsa_in process, for "+inp[i][0])
+                        log.debug("Starting alsa_in process for "+inp[i][0])
                         x = subprocess.Popen(["alsa_in"]+getIOOptionsForAdditionalSoundcard()+["-d", inp[i][0], "-j",i+"i"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    
                         try:
                             subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
                         except:
                             log.exception("Error getting RT")
-      
                         alsa_in_instances[i]=x
-                        log.info("Added "+i+"i at"+inp[i][1])
+                        log.info("Added "+i+"i at "+inp[i][1])
 
             for i in op:
-                if i in toretry_out:
-                    if time.monotonic() < toretry_out[i]:
-                        continue
-                    del toretry_out[i]
+                if not i.startswith("HDMI"):
                     if not i in alsa_out_instances:
-                        startPulse=True
-                        try:
-                            subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
-                        except:
-                            print(traceback.format_exc())
-
-                        log.debug("Starting alsa_out process for "+op[i][0])
-                        x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+"o"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-                        alsa_out_instances[i]=x
-
+                        #We do not want to mess with the 
+                        if op[i][0]== currentPrimaryDevice:
+                            if usingDefaultCard:
+                                continue
+                        
+                        log.debug("Starting alsa_out process, for "+op[i][0])
+                        x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+'o'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    
                         try:
                             subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
                         except:
                             log.exception("Error getting RT")
-                        log.info("Added "+i+"o")
-            
-            #If we stopped it, start it again
-            if startPulse:
-                try:
-                    setupPulse()
-                except:
-                    log.exception("Error restarting pulse, ignoring")
-            if lastFullScan> time.monotonic()-10:
-                return
-            lastFullScan = time.monotonic()
-        oldi,oldo,oldmidis =inp,op,midis
+                        alsa_out_instances[i]=x
+                        log.info("Added "+i+"o at "+op[i][1])
 
-        #Look for ports with the a2jmidid naming pattern and give them persistant name aliases.
-        x = _jackclient.get_ports(is_midi=True)
-        for i in midis:
-            for j in x:
-                number = "["+str(midis[i][1])+"]"
-                if number in j.name:
-                    if i[0] in j.name:
-                        try:
-                            if not i in j.aliases:
-                                print(j.aliases, i)
-                                j.set_alias(i)
-                        except:
-                            log.exception("Error setting MIDI alias")
-
-
-        for i in inp:
-            #HDMI doesn't do inputs as far as I know
-            if not i.startswith("HDMI"):
-                if not i in alsa_in_instances:
-                    if inp[i][0]== "hw:0,0":
-                        #We don't do an alsa in for this card because it
-                        #Is already the JACK backend
-                        if usingDefaultCard:
-                            continue
-
-                    log.debug("Starting alsa_in process for "+inp[i][0])
-                    x = subprocess.Popen(["alsa_in"]+getIOOptionsForAdditionalSoundcard()+["-d", inp[i][0], "-j",i+"i"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-                
+            #In case alsa_in doesn't properly tell us about a removed soundcard
+            #Check for things that no longer exist.
+            try:
+                tr =[]
+                for i in alsa_out_instances:
+                    if not i in op:
+                        tr.append(i)
+                for i in tr:
+                    log.warning("Removed "+i+"o because the card was removed")
                     try:
-                        subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                        closeAlsaProcess(alsa_out_instances[i])
                     except:
-                        log.exception("Error getting RT")
-                    alsa_in_instances[i]=x
-                    log.info("Added "+i+"i at "+inp[i][1])
+                        log.exception("Error closing process")
+                    del alsa_out_instances[i]
 
-        for i in op:
-            if not i.startswith("HDMI"):
-                if not i in alsa_out_instances:
-                    #We do not want to mess with the 
-                    if op[i][0]== "hw:0,0":
-                        if usingDefaultCard:
-                            continue
+                tr =[]
+                for i in alsa_in_instances:
+                    if not i in inp:
+                        tr.append(i)
+                for i in tr:
+                    log.warning("Removed "+i+"i because the card was removed")
+                    try:
+                        closeAlsaProcess(alsa_in_instances[i])
+                    except:
+                        log.exception("Error closing process")
+                    del alsa_in_instances[i]
+            except:
+                log.exception("Exception in loop")
+            try:
+                tr =[]
+                for i in alsa_out_instances:
                     
-                    log.debug("Starting alsa_out process, for "+op[i][0])
-                    x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+'o'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    x=readAllSoFar(alsa_out_instances[i])
+                    e=readAllErrSoFar(alsa_out_instances[i])
+                    problem = b"err =" in x+e or alsa_out_instances[i].poll()
+                    problem = problem or b"busy" in (x+e) 
+
+                    if problem:
+                        log.error("Error in output "+ i +(x+e).decode("utf8") +" status code "+str(alsa_out_instances[i].poll()))
+                        closeAlsaProcess(alsa_out_instances[i])
+                        tr.append(i)
+                        #We have to delete the busy stuff but we can
+                        #retry later
+                        if b"busy" in (x+e):
+                            toretry_out[i]=time.monotonic()+5
+                        elif b"No such" in (x+e):
+                            toretry_out[i]=time.monotonic()+10
+                            log.error("Nonexistant card "+i)
+                        else:
+                            toretry_out[i]=time.monotonic()
+
+                        log.info("Removed "+i+"o")
+
+                    elif not alsa_out_instances[i].poll()==None:
+                        tr.append(i)
+                        log.info("Removed "+i+"o")
+
+                for i in tr:
+                    try_stop(alsa_out_instances[i])
+                    del alsa_out_instances[i]
+
+                tr =[]
+                for i in alsa_in_instances:
+                    
+                    x= readAllSoFar(alsa_in_instances[i])
+                    e=readAllErrSoFar(alsa_in_instances[i])
+                    problem = b"err =" in x+e or alsa_in_instances[i].poll()
+                    problem = problem or b"busy" in (x+e) 
+                    if problem :
+                        log.error("Error in input "+ i +(x+e).decode("utf8") +" status code "+str(alsa_in_instances[i].poll()))
+                        closeAlsaProcess(alsa_in_instances[i])   
+                        tr.append(i)
+                        if b"busy" in (x+e):
+                            toretry_in[i]=time.monotonic()+5
+                        
+                        if b"No such" in (x+e):
+                            toretry_in[i]=time.monotonic()+10
+                            log.error("Nonexistant card "+i)
+                        else:
+                            toretry_out[i]=time.monotonic()
+
+                        log.info("Removed "+i+"i")
+
+                    elif not alsa_in_instances[i].poll()==None:
+                        tr.append(i)
+                        log.info("Removed "+i+"i")
+
+                for i in tr:
+                    try_stop(alsa_in_instances[i])
+                    del alsa_in_instances[i]
+            except:
+                print(traceback.format_exc())
                 
+
+
+
+            ##HANDLE CREATING AND GC-ING things
+            inp,op,midis = listSoundCardsByPersistentName()
+
+            #Ignore all except MIDI
+            if not useAdditionalSoundcards.lower() in ("true","yes",'on'):
+                inp = {}
+                op = {}
+
+            #This is how we avoid constantky retrying to connect the same few
+            #clients that fail, which might make a bad periodic click that nobody
+            #wants to hear.
+            startPulse = False
+            if (inp,op,midis)==(oldi,oldo,oldmidis):
+
+                #However some things we need to retry.
+                #Device or resource busy being the main one
+                for i in inp:
+                    if i in toretry_in:
+                        if time.monotonic() < toretry_in[i]:
+                            continue
+                        del toretry_in[i]
+                        if not i in alsa_in_instances:
+                            #Pulse likes to take over cards so we have to stop it, take the card, then start it. It sucks
+                            startPulse = True
+                            try:
+                                subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
+                            except:
+                                print(traceback.format_exc())
+                            time.sleep(2)
+
+                            log.debug("Starting alsa_in process, for "+inp[i][0])
+                            x = subprocess.Popen(["alsa_in"]+getIOOptionsForAdditionalSoundcard()+["-d", inp[i][0], "-j",i+"i"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                            try:
+                                subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                            except:
+                                log.exception("Error getting RT")
+        
+                            alsa_in_instances[i]=x
+                            log.info("Added "+i+"i at"+inp[i][1])
+
+                for i in op:
+                    if i in toretry_out:
+                        if time.monotonic() < toretry_out[i]:
+                            continue
+                        del toretry_out[i]
+                        if not i in alsa_out_instances:
+                            startPulse=True
+                            try:
+                                subprocess.call(['pulseaudio','-k'],stderr=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
+                            except:
+                                print(traceback.format_exc())
+
+                            log.debug("Starting alsa_out process for "+op[i][0])
+                            x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+"o"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                            alsa_out_instances[i]=x
+
+                            try:
+                                subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                            except:
+                                log.exception("Error getting RT")
+                            log.info("Added "+i+"o")
+                
+                #If we stopped it, start it again
+                if startPulse:
                     try:
-                        subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                        setupPulse()
                     except:
-                        log.exception("Error getting RT")
-                    alsa_out_instances[i]=x
-                    log.info("Added "+i+"o at "+op[i][1])
+                        log.exception("Error restarting pulse, ignoring")
+                if lastFullScan> time.monotonic()-10:
+                    return
+                lastFullScan = time.monotonic()
+            oldi,oldo,oldmidis =inp,op,midis
 
-        #In case alsa_in doesn't properly tell us about a removed soundcard
-        #Check for things that no longer exist.
-        try:
-            tr =[]
-            for i in alsa_out_instances:
-                if not i in op:
-                    tr.append(i)
-            for i in tr:
-                log.warning("Removed "+i+"o because the card was removed")
-                try:
-                    closeAlsaProcess(alsa_out_instances[i])
-                except:
-                    log.exception("Error closing process")
-                del alsa_out_instances[i]
+            #Look for ports with the a2jmidid naming pattern and give them persistant name aliases.
+            x = _jackclient.get_ports(is_midi=True)
+            for i in midis:
+                for j in x:
+                    number = "["+str(midis[i][1])+"]"
+                    if number in j.name:
+                        if i[0] in j.name:
+                            try:
+                                if not i in j.aliases:
+                                    j.set_alias(i)
+                            except:
+                                log.exception("Error setting MIDI alias")
 
-            tr =[]
-            for i in alsa_in_instances:
-                if not i in inp:
-                    tr.append(i)
-            for i in tr:
-                log.warning("Removed "+i+"i because the card was removed")
-                try:
-                    closeAlsaProcess(alsa_in_instances[i])
-                except:
-                    log.exception("Error closing process")
-                del alsa_in_instances[i]
-        except:
-            log.exception("Exception in loop")
+
+            for i in inp:
+                #HDMI doesn't do inputs as far as I know
+                if not i.startswith("HDMI"):
+                    if not i in alsa_in_instances:
+                        if inp[i][0]== currentPrimaryDevice:
+                            #We don't do an alsa in for this card because it
+                            #Is already the JACK backend
+                            if usingDefaultCard:
+                                continue
+
+                        log.debug("Starting alsa_in process for "+inp[i][0])
+                        x = subprocess.Popen(["alsa_in"]+getIOOptionsForAdditionalSoundcard()+["-d", inp[i][0], "-j",i+"i"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    
+                        try:
+                            subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                        except:
+                            log.exception("Error getting RT")
+                        alsa_in_instances[i]=x
+                        log.info("Added "+i+"i at "+inp[i][1])
+
+            for i in op:
+                if not i.startswith("HDMI"):
+                    if not i in alsa_out_instances:
+                        #We do not want to mess with the 
+                        if op[i][0]== currentPrimaryDevice:
+                            if usingDefaultCard:
+                                continue
+                        
+                        log.debug("Starting alsa_out process, for "+op[i][0])
+                        x = subprocess.Popen(["alsa_out"]+getIOOptionsForAdditionalSoundcard()+["-d", op[i][0], "-j",i+'o'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    
+                        try:
+                            subprocess.check_call(['chrt', '-f','-p', '70', str(x.pid)])
+                        except:
+                            log.exception("Error getting RT")
+                        alsa_out_instances[i]=x
+                        log.info("Added "+i+"o at "+op[i][1])
+
+            #In case alsa_in doesn't properly tell us about a removed soundcard
+            #Check for things that no longer exist.
+            try:
+                tr =[]
+                for i in alsa_out_instances:
+                    if not i in op:
+                        tr.append(i)
+                for i in tr:
+                    log.warning("Removed "+i+"o because the card was removed")
+                    try:
+                        closeAlsaProcess(alsa_out_instances[i])
+                    except:
+                        log.exception("Error closing process")
+                    del alsa_out_instances[i]
+
+                tr =[]
+                for i in alsa_in_instances:
+                    if not i in inp:
+                        tr.append(i)
+                for i in tr:
+                    log.warning("Removed "+i+"i because the card was removed")
+                    try:
+                        closeAlsaProcess(alsa_in_instances[i])
+                    except:
+                        log.exception("Error closing process")
+                    del alsa_in_instances[i]
+            except:
+                log.exception("Exception in loop")
+        finally:
+            lock.release()
 
 
 def work():
@@ -1484,45 +1785,48 @@ def stopManaging():
 jack_output = b''
 def _checkJack():
     global jackp,jack_output
-    with lock:
-        if manageJackProcess:
-            if jackp:
-                try:
-                    jack_output+= readAllSoFar(jackp)
-                    jack_output+= readAllErrSoFar(jackp)
-                except:
-                    print(traceback.format_exc())
-                    print(jack_output)
-
+    if lock.acquire(timeout=10):
+        try:
+            if manageJackProcess:
+                if jackp:
                     try:
-                        print("Killing jack process, read fail")
-                        jackp.kill()
+                        jack_output+= readAllSoFar(jackp)
+                        jack_output+= readAllErrSoFar(jackp)
                     except:
-                        pass
-                    jackp = None
+                        print(traceback.format_exc())
+                        print(jack_output)
 
-                if b"\n" in jack_output or len(jack_output)>1024:
-                    print("jackd:")
-                    print(jack_output)
-                    jack_output=b''
+                        try:
+                            print("Killing jack process, read fail")
+                            jackp.kill()
+                        except:
+                            pass
+                        jackp = None
+
+                    if b"\n" in jack_output or len(jack_output)>1024:
+                        print("jackd:")
+                        print(jack_output)
+                        jack_output=b''
 
 
-            if manageJackProcess  and (not jackp) or (jackp and jackp.poll() !=None):          
-                global prevJackStatus
-                if not jackp:
-                    if prevJackStatus:
-                        prevJackStatus=False
-                        onJackFailure()
-                if time.monotonic()-lastJackStartAttempt > 10:
-                    log.warning("JACK appears to have stopped. Attempting restart.")
-                    _stopJackProcess()
-                    if jackShouldBeRunning:
-                        _startJackProcess()
+                if manageJackProcess  and (not jackp) or (jackp and jackp.poll() !=None):          
+                    global prevJackStatus
+                    if not jackp:
+                        if prevJackStatus:
+                            prevJackStatus=False
+                            onJackFailure()
+                    if time.monotonic()-lastJackStartAttempt > 10:
+                        log.warning("JACK appears to have stopped. Attempting restart.")
+                        _stopJackProcess()
+                        if jackShouldBeRunning:
+                            _startJackProcess()
+        finally:
+            lock.release()
 
 def _checkJackClient(err=True):
     global _jackclient, realConnections
     import jack
-    with lock:
+    if lock.acquire(timeout=10):
         try:
              
             t=_jackclient.status.server_started
@@ -1544,108 +1848,129 @@ def _checkJackClient(err=True):
                     log.exception("Error creating JACK client")
                 return
 
-            _jackclient.set_port_registration_callback(onPortRegistered)
+            _jackclient.set_port_registration_callback(onPortRegistered,only_available=True)
             _jackclient.set_port_connect_callback(onPortConnect)
             _jackclient.activate()
             _jackclient.get_ports()
             time.sleep(0.5)
             findReal()
             return True
+        finally:
+            lock.release()
 
     if not _jackclient:
         return False
 
 def getPorts(*a,**k):
-    with lock:
-        if not _jackclient:
-            return []
-        ports =[]
-        return _jackclient.get_ports(*a,**k)
-
+    if lock.acquire(timeout=10):
+        try:
+            if not _jackclient:
+                return []
+            ports =[]
+            return _jackclient.get_ports(*a,**k)
+        finally:
+            lock.release()
 
 def getPortNamesWithAliases(*a,**k):
-    with lock:
-        if not _jackclient:
-            return []
-        ports =[]
-        x= _jackclient.get_ports(*a,**k)
-        for i in x:
-            for j in i.aliases:
-                if not j in ports:
-                    ports.append(j)
-            if not i.name in ports:
-                ports.append(i.name)
-        return ports
+    if lock.acquire(timeout=10):
+        try:
+            if not _jackclient:
+                return []
+            ports =[]
+            x= _jackclient.get_ports(*a,**k)
+            for i in x:
+                for j in i.aliases:
+                    if not j in ports:
+                        ports.append(j)
+                if not i.name in ports:
+                    ports.append(i.name)
+            return ports
+        finally:
+            lock.release()
 
 
 def getConnections(name,*a,**k):
-    with lock:
-        if not _jackclient:
-            return []
+    if lock.acquire(timeout=10):
         try:
-            return _jackclient.get_all_connections(name)
-        except:
-            log.exception("Error getting connections")
-            return []
-
+            if not _jackclient:
+                return []
+            try:
+                return _jackclient.get_all_connections(name)
+            except:
+                log.exception("Error getting connections")
+                return []
+        finally:
+            lock.release()
 
 def disconnect(f,t):
-    with lock:
-        if not _jackclient:
-            return
-
-        if not isConnected(f,t):
-            return
-
+    if iceflow.lock.acquire(timeout=30):
         try:
-            if  isinstance(f,str):
-                f = _jackclient.get_port_by_name(f)
-            if  isinstance(t,str):
-                t = _jackclient.get_port_by_name(t)
-    
-            _jackclient.disconnect(f,t)
-        except:
-            pass
-        
+            if lock.acquire(timeout=30):
+                try:
+                    if not _jackclient:
+                        return
+
+                    if not isConnected(f,t):
+                        return
+
+                    try:
+                        if  isinstance(f,str):
+                            f = _jackclient.get_port_by_name(f)
+                        if  isinstance(t,str):
+                            t = _jackclient.get_port_by_name(t)
+                
+                        _jackclient.disconnect(f,t)
+                    except:
+                        pass
+                finally:
+                    lock.release()
+        finally:
+            iceflow.lock.release()
 
 def connect(f,t):
-      with lock:
-        if not _jackclient:
-            return 
+    if iceflow.lock.acquire(timeout=10):
         try:
-            if  isinstance(f,str):
-                f = _jackclient.get_port_by_name(f)
-            if  isinstance(t,str):
-                t = _jackclient.get_port_by_name(t)
-        except:
-            return
-
-        f_input =  f.is_input
-
-        if f.is_input:
-            if not t.is_output:
-                #Do a retry, there seems to be a bug somewhere
+            if lock.acquire(timeout=10):
                 try:
-                    f = _jackclient.get_port_by_name(f.name)
-                    t = _jackclient.get_port_by_name(t.name)
-                except:
-                    return
-                if f.is_input:
-                    if not t.is_output:
-                         raise ValueError("Cannot connect two inputs",str((f,t)))
-        else:
-            if t.is_output:
-                raise ValueError("Cannot connect two outputs",str((f,t)))
-        f=f.name
-        t=t.name
-        try:
-            if f_input:
-                _jackclient.connect(t,f)
-            else:
-                _jackclient.connect(f,t)
-        except:
-            pass
-            
+                    if not _jackclient:
+                        return 
+                    try:
+                        if  isinstance(f,str):
+                            f = _jackclient.get_port_by_name(f)
+                        if  isinstance(t,str):
+                            t = _jackclient.get_port_by_name(t)
+                    except:
+                        return
+
+                    f_input =  f.is_input
+
+                    if f.is_input:
+                        if not t.is_output:
+                            #Do a retry, there seems to be a bug somewhere
+                            try:
+                                f = _jackclient.get_port_by_name(f.name)
+                                t = _jackclient.get_port_by_name(t.name)
+                            except:
+                                return
+                            if f.is_input:
+                                if not t.is_output:
+                                    raise ValueError("Cannot connect two inputs",str((f,t)))
+                    else:
+                        if t.is_output:
+                            raise ValueError("Cannot connect two outputs",str((f,t)))
+                    f=f.name
+                    t=t.name
+                    try:
+                        if f_input:
+                            _jackclient.connect(t,f)
+                        else:
+                            _jackclient.connect(f,t)
+                    except:
+                        pass
+                finally:
+                    lock.release()
+        finally:
+            iceflow.lock.release()
 #startManagingJack()
 
 

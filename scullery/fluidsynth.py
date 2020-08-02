@@ -13,11 +13,12 @@
 #You should have received a copy of the GNU General Public License
 #along with Scullery.  If not, see <http://www.gnu.org/licenses/>.
 
-import time,weakref,os
+import time,weakref,os,yaml,threading
 gmInstruments = None
 
 players = weakref.WeakValueDictionary()
 
+lock = threading.Lock()
 
 def allNotesOff():
     try:
@@ -26,12 +27,25 @@ def allNotesOff():
     except:
         pass
 
+def stopAll():
+    try:
+        for i in players:
+            players[i].close()
+    except:
+        pass
+
+def remakeAll():
+    try:
+        for i in players:
+            players[i].close()
+    except:
+        pass
 
 def getGMInstruments():
     global gmInstruments
     if gmInstruments:
         return gmInstruments
-    with os.path.join(os.path.dirname(os.path.abspath(__file__)),'gm_instruments.yaml') as f:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'gm_instruments.yaml')) as f:
         gmInstruments = yaml.load(f.read())
     return gmInstruments
 
@@ -64,7 +78,8 @@ def findGMInstrument(name, look_in_soundfont=None,bank=None):
 
             for j in name.lower().split(" "):
                 if not j in n:
-                    #Bank 128 is reserved for drums so it can substitute for drum related words
+                    #Bank 128 is reserved for drums so it can substitute for drum related words,
+                    #It's still a match
                     if not (j in ('kit','drums','drum') and sf2.raw.pdta['Phdr'][i][2]==128):
                         match = False
             if match:
@@ -85,6 +100,16 @@ def findGMInstrument(name, look_in_soundfont=None,bank=None):
             return (bank or 0,i)
     raise ValueError("No matching instrument")
 
+def waitForJack():
+    from . import jack
+    for i in range(10):
+        if not jack.getPorts():
+            time.sleep(1)
+        else:
+            return
+
+    raise RuntimeError("It appears that JACK is not running")
+
 class FluidSynth():
     defaultSoundfont = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
@@ -94,8 +119,7 @@ class FluidSynth():
 
         if jackClientName:
            from . import jack
-           if not jack.getPorts():
-               raise RuntimeError("It appears that JACK is not running")
+           waitForJack()
         
         self.soundfont = soundfont or self.defaultSoundfont
 
@@ -103,40 +127,50 @@ class FluidSynth():
             raise OSError("Soundfont: "+soundfont+" does not exist or is not a file")
 
         from . thirdparty import fluidsynth
-        self.fs = fluidsynth.Synth()
-        self.fs.setting("synth.chorus.active", 1 if chorus else 0)
-        self.fs.setting("synth.reverb.active", 1 if reverb else 0)
+        def remake():
+            self.fs = fluidsynth.Synth()
+            self.fs.setting("synth.chorus.active", 1 if chorus else 0)
+            self.fs.setting("synth.reverb.active", 1 if reverb else 0)
 
-        try:
-            self.fs.setting("synth.dynamic-sample-loading", 1 if ondemand else 0)
-        except:
-            logging.exception("No dynamic loading support, ignoring")
-        self.sfid = self.fs.sfload(self.soundfont)
-        usingJack = False
+            try:
+                self.fs.setting("synth.dynamic-sample-loading", 1 if ondemand else 0)
+            except:
+                logging.exception("No dynamic loading support, ignoring")
+            self.sfid = self.fs.sfload(self.soundfont)
+            usingJack = False
 
-        if jackClientName:
-           self.fs.setting("audio.jack.id", jackClientName)
-           usingJack = True
+            if jackClientName:
+                self.fs.setting("audio.jack.id", jackClientName)
+                self.fs.setting("audio.midi.id", "KaithemFluidsynth")
 
-        if connectMidi:
-            pass
-            #self.midiAirwire = jackmanager.Mono
+            usingJack = True
 
-        if connectOutput:
-            self.airwire= jack.Airwire(jackClientName or 'KaithemFluidsynth',connectOutput)
-            self.airwire.connect()
+            if connectMidi:
+                pass
+                #self.midiAirwire = jackmanager.Mono
 
-        if usingJack:
-           if not jackClientName:
-                self.fs.setting("audio.jack.id", "KaithemFluidsynth")
+            if connectOutput:
+                self.airwire= jack.Airwire(jackClientName or 'KaithemFluidsynth',connectOutput)
+                self.airwire.connect()
 
-           self.fs.setting("midi.driver", 'jack')
-           self.fs.start(driver="jack", midi_driver="jack")
+            if usingJack:
+                if not jackClientName:
+                        self.fs.setting("audio.jack.id", "KaithemFluidsynth")
+                        self.fs.setting("audio.midi.id", "KaithemFluidsynth")
 
-        else:
-            #self.fs.setting("audio.driver", 'alsa')
-            self.fs.start()
-        self.fs.program_select(0, self.sfid, 0, 0)
+
+                self.fs.setting("midi.driver", 'jack')
+                self.fs.start(driver="jack", midi_driver="jack")
+
+            else:
+                #self.fs.setting("audio.driver", 'alsa')
+                self.fs.start()
+            for i in range(16):
+                self.fs.program_select(i, self.sfid, 0, 0)
+        remake()
+
+        #allow restart after JACK settings change
+        self.remake = remake
 
     def setInstrument(self,channel, instrument,bank=None):
         bank, insNumber = findGMInstrument(instrument,self.soundfont,bank)
@@ -147,8 +181,23 @@ class FluidSynth():
 
     def noteOff(self,channel,note):
         self.fs.noteoff(channel, note)
+    def cc(self,channel,control, val):
+        self.fs.cc(channel, control, val)
+
+    def pitchBend(self,channel,val):
+        self.fs.pitch_bend(channel, val)
+
+    def programChange(self,channel,val):
+        self.fs.program_change(channel, val)
 
     def __del__(self):
-        if hasattr(self,'fs'):
-            self.fs.delete()
-            del self.fs
+        self.close()
+
+    def close(self):
+        with lock:
+            try:
+                if hasattr(self,'fs'):
+                    self.fs.delete()
+                    del self.fs
+            except AttributeError:
+                pass
