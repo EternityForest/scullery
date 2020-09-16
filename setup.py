@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scullery",
-    version="0.1.4",
+    version="0.1.5",
     author="Daniel Dunn",
     author_email="dannydunn@eternityforest.com",
     description="A utility library based on KaithemAutomation featuring a GStreamer wrapper",
@@ -27,3 +27,8 @@ setuptools.setup(
           "paho-mqtt"
       ],
 )
+
+
+#To push to pypi
+#sudo python3 setup.py sdist bdist_wheel
+#python3 -m twine upload dist/* 

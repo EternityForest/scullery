@@ -14,7 +14,7 @@ See example.py for more details. Also see the equally simple audio and video pla
 Warning, takes over audio, starts JACK, makes noise:python3 -m unittest discover tests
 
 Running just one test suite: python3 -m unittest tests/testFluidSynth.py
-8
+
 ## Examples
 ```python
 import scullery.iceflow
@@ -240,3 +240,51 @@ Download a video based on a youtube-dl specifier, in the given format("bestaudio
 
 
 Nothing else should ever be writing to this cache dir, aside from maybe manually putting in videos.
+
+### scullery.mqtt
+
+#### scullery.mqtt.getConnection(server, port=1883, password=None, messageBusName=None)
+
+Creates an MQTT connection. To speify username, use user@server.net syntax.
+
+To use an internal fake server for testing, use the server "__virtual__".
+
+This connection handles automatically reconnecting and resubscribing for you.  If a connection to a user@server already exists,
+it will return that connection.  
+
+All traffic goes through the internal message bus first, on topics that will begin with /mqtt/. Normally, the internal name is server+":"+port
+But you can specify it explicitly.  The topic name also acts as a sort of internal ID, and the system understands new connections with the same ID
+to be replacements for the old one. All subscriptions will carry over.
+
+Resubscriptions are stored in a master list.  If you subscribe, then delete the connection and recreate a new connection with the same message bus
+name, everything will carry on like nothing happened, so long as you kept a reference to the subscribed function.
+
+You can even create one connection, delete it, make a new one with the same internal messageBusName, to a different server, and all the old subscriptions
+will be "remade" at the new server, as the system knows that the new connection is a "replacement" for the old name.
+
+You cannot have two connections to the same user@server combo with different internal names or passwords, however, if you do not supply a password,
+and the existing connection has one, it will still work as it is simply returning the existing one.
+
+This feature is meant to make GUI config easier, so that changing a connection doesn't break all existing users of that connection.
+
+##### Passive connections
+
+If server is '', it will not create any real connections, but will still publish and subscribe to the internal
+bus, meaning that you can use it as a "passive" connection which uses a real connection configured elsewhere.
+
+Note that you will(currently) only recieve through passives if the backend also subscribed to that topic, subscribing through a passive
+connecting is truly passive, but this may change. At the moment, think of them like "spy" connections.
+
+To use a passive connection, you obviously need to specify the same messageBusName on the passive and backend.
+
+##### MQTTConnection.publish(self, topic, message, qos=2, encoding="json"):
+
+Encoding may be: json,msgpack, raw, utf8
+
+##### MQTTConnection.subscribe(self, topic, function, qos=2, encoding="json")
+Function is passed f(topic,message). 
+
+Scullery only weakly references, so if you delete or otherwise let the function be GCed, it is auto unsubscribed.
+
+##### MQTTConnection.unsubscribe(self, topic, function)
+Automatically unsubscribes from the actual MQTT topic when there are no more local subscribers. Note that subscriptions through a "
