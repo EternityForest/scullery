@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scullery",
-    version="0.1.6",
+    version="0.1.7",
     author="Daniel Dunn",
     author_email="dannydunn@eternityforest.com",
     description="A utility library based on KaithemAutomation featuring a GStreamer wrapper",
