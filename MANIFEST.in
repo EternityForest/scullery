@@ -1,0 +1,2 @@
+include scullery/*.txt
+include scullery/thirdparty/baresipy/baresip_template/*
