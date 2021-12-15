@@ -7,6 +7,8 @@ There is a lot of functionality planned, but it's not at all neccesary to use or
 You will obviously need the Python Gstreamer bindings for those features(but not unrelated features), and several other
 dependancies.
 
+
+
 ## Intro
 See example.py for more details. Also see the equally simple audio and video player.
 
@@ -17,10 +19,7 @@ Running just one test suite: python3 -m unittest tests/testFluidSynth.py
 
 ## Examples
 ```python
-import scullery.iceflow
 import scullery.workers
-
-
 "This file demonstrates a lot of scullery's functionality in a small package"
 
 #Most things require this thread pool to be running
@@ -31,22 +30,10 @@ import scullery.messagebus
 
 import scullery.persist
 
-
-
-class NoiseWindow(scullery.iceflow.GStreamerPipeline):
-	def __init__(self):
-		scullery.iceflow.GStreamerPipeline.__init__(self)
-		self.addElement("videotestsrc",pattern="snow")
-		self.addElement("autovideosink")
-		
-n = None
 #Start the gst pipeline
 def subscriber(topic,val):
-    #Prevent GC
-    global n
-    n=NoiseWindow()
-    n.start()
-    print("started")
+
+    print("Got a message")
     
 #Unsubscribe happens automatically if we don't keep a ref to the function
 scullery.messagebus.subscribe("/test/topic",subscriber)
@@ -72,56 +59,6 @@ while(1):
     time.sleep(1)
 ```
 
-
-
-
-### scullery.iceflow.GStreamerPipeline
-This is the base class for making GStreamer apps
-
-#### addElement(elementType, name=None, connectToOutput=None,**kwargs)
-
-Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
-element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a suitable pad
-on that is available.
-
-The `**kwargs` are used to set properties of the element.
-
-#### addPILCapture(resolution, connectToOutput=None,buffer=1)
-Adds a PILCapture object which acts like a video sink. It will buffer the most recent N frames, discarding as needed.
-
-##### PILCapture.pull()
-Return a video frame as a PIL/Pillow Image. May return None on empty buffers.
-
-#### setProperty(element, property, value)
-Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
-valid files that exist.
-
-#### onMessage(source, name, structure)
-Used for subclassing. Called when a message that has a structure is seen on the bus. Source is the GST elemeny, struct is dict-like, and name is a string.
-
-#### play()
-If paused, start. If never started, raise an error.
-
-#### start()
-Start running
-
-#### stop()
-
-Permanently stop and clean up.
-
-#### pause()
-
-What it sounds like
-
-#### isActive()
-
-Return True if playing or paused
-
-#### seek(t=None, rate=None)
-Seek to a time, set playback rate, or both.
-
-
-
 ### scullery.messagebus
 
 #### scullery.messagebus.subscribe(callback,topic)
@@ -137,10 +74,77 @@ Signature must be function,topic,value.
 
 If the function has an attribute messagebusWrapperFor, the value of that property is passed instead of the function itself. Any higher level stuff that uses the message bus must set this property when wrapping functions.
 
+
+
+### scullery.units
+This module deals with unit conversions.
+
+#### scullery.units.convert(value,fromUnit, toUnit)
+Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
+supported.
+
+
+### scullery.mqtt
+
+#### scullery.mqtt.getConnection(server, port=1883, password=None, messageBusName=None)
+
+Creates an MQTT connection. To speify username, use user@server.net syntax.
+
+To use an internal fake server for testing, use the server "__virtual__".
+
+This connection handles automatically reconnecting and resubscribing for you.  If a connection to a user@server already exists,
+it will return that connection.  
+
+All traffic goes through the internal message bus first, on topics that will begin with /mqtt/. Normally, the internal name is server+":"+port
+But you can specify it explicitly.  The topic name also acts as a sort of internal ID, and the system understands new connections with the same ID
+to be replacements for the old one. All subscriptions will carry over.
+
+Resubscriptions are stored in a master list.  If you subscribe, then delete the connection and recreate a new connection with the same message bus
+name, everything will carry on like nothing happened, so long as you kept a reference to the subscribed function.
+
+You can even create one connection, delete it, make a new one with the same internal messageBusName, to a different server, and all the old subscriptions
+will be "remade" at the new server, as the system knows that the new connection is a "replacement" for the old name.
+
+You cannot have two connections to the same user@server combo with different internal names or passwords, however, if you do not supply a password,
+and the existing connection has one, it will still work as it is simply returning the existing one.
+
+This feature is meant to make GUI config easier, so that changing a connection doesn't break all existing users of that connection.
+
+##### Passive connections
+
+If server is '', it will not create any real connections, but will still publish and subscribe to the internal
+bus, meaning that you can use it as a "passive" connection which uses a real connection configured elsewhere.
+
+Note that you will(currently) only recieve through passives if the backend also subscribed to that topic, subscribing through a passive
+connecting is truly passive, but this may change. At the moment, think of them like "spy" connections.
+
+To use a passive connection, you obviously need to specify the same messageBusName on the passive and backend.
+
+##### MQTTConnection.publish(self, topic, message, qos=2, encoding="json"):
+
+Encoding may be: json,msgpack, raw, utf8
+
+##### MQTTConnection.subscribe(self, topic, function, qos=2, encoding="json")
+Function is passed f(topic,message). 
+
+Scullery only weakly references, so if you delete or otherwise let the function be GCed, it is auto unsubscribed.
+
+##### MQTTConnection.unsubscribe(self, topic, function)
+Automatically unsubscribes from the actual MQTT topic when there are no more local subscribers. Note that subscriptions through a "
+
+
+
+
+
+# Everything below this should be moved to a separate library.
+
+It will still be included as a compatibility stub that just calls into the external stuff.
+
+
+
 ### scullery.jack
 
 This submodule requires pyjack, and of course Jack. You should normally import this somewhere if using IceFlow with JACK.
-
 
 #### Message Bus activity
 
@@ -225,66 +229,48 @@ Using this without JACK may not work.
 Set the instrumemt. If instrument is str, we will use the closest match we can find, or raise an error.
 
 
-### scullery.units
-This module deals with unit conversions.
 
-#### scullery.units.convert(value,fromUnit, toUnit)
-Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
-supported.
+### scullery.iceflow.GStreamerPipeline
+This is the base class for making GStreamer apps
 
-### scullery.netmedia
+#### addElement(elementType, name=None, connectToOutput=None,**kwargs)
 
-#### scullery.netmedia.downloadVideo(vid, directory="~/Videos/IceFlow Cache", format="bestvideo", timeout=10)
+Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
+element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a suitable pad
+on that is available.
 
-Download a video based on a youtube-dl specifier, in the given format("bestaudio") for audio only, and try to return the filename the moment the download begins.
+The `**kwargs` are used to set properties of the element.
 
+#### addPILCapture(resolution, connectToOutput=None,buffer=1)
+Adds a PILCapture object which acts like a video sink. It will buffer the most recent N frames, discarding as needed.
 
-Nothing else should ever be writing to this cache dir, aside from maybe manually putting in videos.
+##### PILCapture.pull()
+Return a video frame as a PIL/Pillow Image. May return None on empty buffers.
 
-### scullery.mqtt
+#### setProperty(element, property, value)
+Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
+valid files that exist.
 
-#### scullery.mqtt.getConnection(server, port=1883, password=None, messageBusName=None)
+#### onMessage(source, name, structure)
+Used for subclassing. Called when a message that has a structure is seen on the bus. Source is the GST elemeny, struct is dict-like, and name is a string.
 
-Creates an MQTT connection. To speify username, use user@server.net syntax.
+#### play()
+If paused, start. If never started, raise an error.
 
-To use an internal fake server for testing, use the server "__virtual__".
+#### start()
+Start running
 
-This connection handles automatically reconnecting and resubscribing for you.  If a connection to a user@server already exists,
-it will return that connection.  
+#### stop()
 
-All traffic goes through the internal message bus first, on topics that will begin with /mqtt/. Normally, the internal name is server+":"+port
-But you can specify it explicitly.  The topic name also acts as a sort of internal ID, and the system understands new connections with the same ID
-to be replacements for the old one. All subscriptions will carry over.
+Permanently stop and clean up.
 
-Resubscriptions are stored in a master list.  If you subscribe, then delete the connection and recreate a new connection with the same message bus
-name, everything will carry on like nothing happened, so long as you kept a reference to the subscribed function.
+#### pause()
 
-You can even create one connection, delete it, make a new one with the same internal messageBusName, to a different server, and all the old subscriptions
-will be "remade" at the new server, as the system knows that the new connection is a "replacement" for the old name.
+What it sounds like
 
-You cannot have two connections to the same user@server combo with different internal names or passwords, however, if you do not supply a password,
-and the existing connection has one, it will still work as it is simply returning the existing one.
+#### isActive()
 
-This feature is meant to make GUI config easier, so that changing a connection doesn't break all existing users of that connection.
+Return True if playing or paused
 
-##### Passive connections
-
-If server is '', it will not create any real connections, but will still publish and subscribe to the internal
-bus, meaning that you can use it as a "passive" connection which uses a real connection configured elsewhere.
-
-Note that you will(currently) only recieve through passives if the backend also subscribed to that topic, subscribing through a passive
-connecting is truly passive, but this may change. At the moment, think of them like "spy" connections.
-
-To use a passive connection, you obviously need to specify the same messageBusName on the passive and backend.
-
-##### MQTTConnection.publish(self, topic, message, qos=2, encoding="json"):
-
-Encoding may be: json,msgpack, raw, utf8
-
-##### MQTTConnection.subscribe(self, topic, function, qos=2, encoding="json")
-Function is passed f(topic,message). 
-
-Scullery only weakly references, so if you delete or otherwise let the function be GCed, it is auto unsubscribed.
-
-##### MQTTConnection.unsubscribe(self, topic, function)
-Automatically unsubscribes from the actual MQTT topic when there are no more local subscribers. Note that subscriptions through a "
+#### seek(t=None, rate=None)
+Seek to a time, set playback rate, or both.

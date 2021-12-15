@@ -2,7 +2,7 @@ import scullery.workers
 scullery.workers.start()
 
 import scullery.iceflow
-import scullery.jack
+import scullery.jacktools
 
 import os,time
 
@@ -16,11 +16,11 @@ class Player(scullery.iceflow.GstreamerPipeline):
 
 
 
-scullery.jack.startManaging()
+#scullery.jacktools.startManaging()
 
 #We call this manually, because we didn't set manageJackProcess
 #So it won't actually auto manage the server itself
-scullery.jack._startJackProcess()
+#scullery.jacktools._startJackProcess()
 
 class TestJackAudio(unittest.TestCase):
     def test_airwire(self):
@@ -28,7 +28,7 @@ class TestJackAudio(unittest.TestCase):
         p.start()
         
         print("You should hear noise")
-        aw =scullery.jack.Airwire("JackTest","system")
+        aw =scullery.jacktools.Airwire("JackTest","system")
         aw.connect()
         time.sleep(1)
         print("No more noise")
@@ -36,7 +36,7 @@ class TestJackAudio(unittest.TestCase):
         del aw
         gc.collect()
         
-        self.assertEqual(len(scullery.jack.allConnections), 0)
+        self.assertEqual(len(scullery.jacktools.allConnections), 0)
 
     def test_fluidsynth_jack(self):
         import scullery.fluidsynth
@@ -57,8 +57,8 @@ class TestJackAudio(unittest.TestCase):
     def test_z_stop(self):
         "Must obviously run last"
         print("Stopping JACK")
-        scullery.jack.stopManaging()
-        scullery.jack.stopJackServer()
+        scullery.jacktools.stopManaging()
+        scullery.jacktools.stopJackServer()
         print("Stopped JACK")
 
             

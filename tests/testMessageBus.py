@@ -78,7 +78,7 @@ class TestMsgbus(unittest.TestCase):
             time.sleep(0.001)
 
         for i in range(1):
-            self.assertEqual(workerTest(0.1),2)
+            self.assertEqual(workerTest(0.1),1)
 
         for i in range(100):
             self.assertEqual(workerTest(),1)
@@ -86,6 +86,6 @@ class TestMsgbus(unittest.TestCase):
         
         self.assertLessEqual(len(workers.workers),workers.maxWorkers)
 
-        time.sleep(3)
+        time.sleep(8)
         #Workers should stop within 1s of inactivity.
         self.assertEqual(len(workers.workers),workers.minWorkers)

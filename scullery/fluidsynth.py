@@ -18,6 +18,7 @@ import weakref
 import os
 import yaml
 import threading
+import logging
 gmInstruments = None
 
 players = weakref.WeakValueDictionary()
@@ -112,9 +113,9 @@ def findGMInstrument(name, look_in_soundfont=None, bank=None):
 
 
 def waitForJack():
-    from . import jack
+    from scullery import jacktools
     for i in range(10):
-        if not jack.getPorts():
+        if not jacktools.getPorts():
             time.sleep(1)
         else:
             return
@@ -139,7 +140,7 @@ def findSoundFont(specific=None, extraFallback=None):
         if os.path.exists(l):
             return l
 
-    return extraFallBack
+    return extraFallback
 
 
 class FluidSynth():
@@ -150,7 +151,7 @@ class FluidSynth():
         players[id(self)] = self
 
         if jackClientName:
-            from . import jack
+            from . import jacktools
             waitForJack()
 
         self.soundfont = soundfont or self.defaultSoundfont
@@ -176,23 +177,23 @@ class FluidSynth():
 
             if jackClientName:
                 self.fs.setting("audio.jack.id", jackClientName)
-                self.fs.setting("audio.midi.id", "KaithemFluidsynth")
+                self.fs.setting("midi.jack.id", "fstest")
 
-            usingJack = True
+                usingJack = True
 
             if connectMidi:
                 pass
                 #self.midiAirwire = jackmanager.Mono
 
             if connectOutput:
-                self.airwire = jack.Airwire(
+                self.airwire = jacktools.Airwire(
                     jackClientName or 'KaithemFluidsynth', connectOutput)
                 self.airwire.connect()
 
             if usingJack:
                 if not jackClientName:
-                    self.fs.setting("audio.jack.id", "KaithemFluidsynth")
-                    self.fs.setting("audio.midi.id", "KaithemFluidsynth")
+                    self.fs.setting("audio.jack.id", "fstest")
+                    self.fs.setting("midi.jack.id", "fstest")
 
                 self.fs.setting("midi.driver", 'jack')
                 self.fs.start(driver="jack", midi_driver="jack")

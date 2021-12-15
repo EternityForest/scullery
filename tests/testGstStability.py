@@ -36,12 +36,12 @@ class TestAudio(unittest.TestCase):
             time.sleep(0.01*random.random())
             p.seek(0.3)
             time.sleep(0.01*random.random())
-            p.setProperty(p.fader, "volume",1)
+            p.setProperty(p.fader, "volume",0.1)
             p.stop()
             #Ensure nothing bad happens setting the volume after stopping
             p.setProperty(p.fader, "volume",1)
-        del p
-        gc.collect()
+            del p
+            gc.collect()
         for i in range(150):
             time.sleep(0.1)
             if len(scullery.iceflow.pipes)==0:
