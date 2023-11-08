@@ -20,11 +20,15 @@ import weakref
 import traceback
 import os
 import sys
+import base64
+import math
 
-#import workers  # , ]messagebus
+# import workers  # , ]messagebus
+
 
 def doNow(f):
     f()
+
 
 initialized = False
 initlock = threading.Lock()
@@ -33,6 +37,7 @@ lock = threading.RLock()
 Gst = None
 jackChannels = {}
 
+stopflag =[0]
 
 # Overridden later
 print = print
@@ -42,13 +47,13 @@ rpc = [None]
 
 def tryToAvoidSegfaults(t, v):
     if v.clientName == "system":
-        stopAllJackUsers()
-
-ppid = os.getppid()
+        stop_allJackUsers()
 
 
-#https://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid-in-python
-def check_pid(pid):        
+
+
+# https://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid-in-python
+def check_pid(pid):
     """ Check For the existence of a unix pid. """
     try:
         os.kill(pid, 0)
@@ -58,15 +63,108 @@ def check_pid(pid):
         return True
 
 
-
 #messagebus.subscribe("/system/jack/delport", tryToAvoidSegfaults)
-
 pipes = weakref.WeakValueDictionary()
 
 log = logging.getLogger("IceFlow_gst")
 
 
-import jsonrpyc
+# This is NixOS compatibility stuff, we could be running as an output from setup.py
+# Or we could be running directly with python3 file.py
+try:
+    from . import jsonrpyc
+except ImportError:
+    import jsonrpyc
+
+class PresenceDetectorRegion():
+    def __init__(self):
+        # This is a first order filter(Time domain blur) of the entire image
+
+        self.state = None
+        self.last = None
+
+    def poll(self, val):
+
+        #
+        from PIL import ImageFilter
+        from PIL import ImageChops
+
+        try:
+            import scipy.ndimage
+            ndim = 1
+        except Exception:
+            ndim = 0
+
+        import numpy as np
+        x = val
+
+        self.last = x if x else self.last
+
+        rval = 0
+        if self.state:
+            diff = ImageChops.difference(self.state, self.last)
+            # This is an erosion operation to prioritize multipixel stuff
+            # over single pixel noise
+            d = diff.convert('F')
+
+            if ndim:
+                # This is like 4 times faster.
+                d = scipy.ndimage.grey_erosion(d, (3, 3))
+            else:
+                d = d.filter(ImageFilter.MinFilter(3))
+            d = np.array(d)
+
+            # Ignore everythong below the threshold, that gets rid of a lot of our noise
+            m = np.mean(d) * 1.5 + 4
+            d = np.fmax(d - m, 0)
+
+            x = np.mean(d * d)
+            if x == 0:
+                rval = 0
+
+            rval = math.sqrt(x) / 2.5
+
+        self.state = self.last
+        return rval
+
+
+class PresenceDetector():
+    def __init__(self, capture, regions=None):
+        self.masks = regions
+        self.regions = {}
+        self.entireImage = PresenceDetectorRegion()
+        self.capture = capture
+
+        if regions is not None:
+            for i in regions:
+                self.regions[i] = PresenceDetectorRegion()
+
+    def poll(self):
+        r = {}
+
+        x = self.capture.pull()
+        if x is None:
+            print("Capture returned none")
+            return None
+
+        w = x.width
+        h = x.height
+
+        if self.masks is None:
+            return self.entireImage.poll(x)
+        else:
+            r[''] = self.entireImage.poll(x)
+
+        for i in self.masks:
+            m = self.masks[i]
+            # Crop region is specified as a fraction, convert to pixels and points instead of fraction y,x,w,h
+            i2 = x.crop((int(m[0] * w),
+                         int(m[1] * h),
+                        int(m[0] * w) + int(m[2] * w), 
+                        int(m[1] * h) + int(m[3] * h))
+                        )
+            r[i] = self.regions[i].poll(i2)
+        return r
 
 
 class PILCapture():
@@ -76,8 +174,30 @@ class PILCapture():
         self.img = Image
         self.appsink = appsink
 
-    def pull(self):
-        sample = self.appsink.emit('try-pull-sample', 0.1 * 10**9)
+    def pullToFile(self, f, timeout=0.1):
+        x = self.pull(timeout, True)
+        if not x:
+            return None
+        x.save(f)
+        return 1
+
+    def pull(self, timeout=0.1, forceLatest=False):
+        sample = self.appsink.emit('try-pull-sample', timeout * 10**9)
+
+        if forceLatest:
+            # Try another pull but only wait 1ms.
+            # This is in case there is another queued up frame, such as if we have buffer elements or something
+            # before this
+            sample2 = self.appsink.emit('try-pull-sample', 1000000)
+            c = 10
+            while sample2:
+                if c < 1:
+                    break
+                c -= 1
+                sample2 = self.appsink.emit('try-pull-sample', 1000000)
+
+            sample = sample2 or sample
+
         if not sample:
             return None
 
@@ -153,14 +273,18 @@ def link(a, b):
             if not a.link(b) == Gst.PadLinkReturn.OK:
                 raise RuntimeError("Could not link: " + str(a) + str(b))
 
-        elif not a.link(b):
-            raise RuntimeError("Could not link" + str(a) + str(b))
+        else:
+            x = a.link(b)
+
+            if not x:
+                raise RuntimeError("Could not link" + str(a) +
+                                   str(b) + " reason " + str(x))
     finally:
         if unref:
             pass  # b.unref()
 
 
-def stopAllJackUsers():
+def stop_allJackUsers():
     # It seems best to stop everything using jack before stopping and starting the daemon.
     with lock:
         c = list(jackChannels.items())
@@ -375,6 +499,13 @@ class GStreamerPipeline():
 
         self.seeklock = self.lock
 
+        self.pilcaptures = []
+
+        # We use this for detecting motion.
+        # We have to use this hack because gstreamer's detection is... not great.
+        self._pilmotiondetectorcapture = None
+        self._pilmotiondetector = None
+
         self.exiting = False
 
         self.uuid = time.time()
@@ -464,8 +595,20 @@ class GStreamerPipeline():
         self.pipeline.send_event(Gst.Event.new_eos())
 
     def loopCallback(self):
-        # Meant to subclass. Gets called under the lock
-        pass
+        if self._pilmotiondetector:
+            x = self._pilmotiondetector.poll()
+            if x is None:
+                return
+            rpc[0]("onPresenceValue", [x])
+
+    def addPresenceDetector(self, resolution, connectToOutput=None, regions=None):
+        if self._pilmotiondetector:
+            raise RuntimeError("Already have one of these")
+
+        self._pilmotiondetectorcapture = self.addPILCapture(
+            resolution, connectToOutput, method=0)
+        self._pilmotiondetector = PresenceDetector(
+            self._pilmotiondetectorcapture, regions)
 
     def seek(self, t=None, rate=None, _raw=False, _offset=0.008, flush=True, segment=False, sync=False, skip=False):
         "Seek the pipeline to a position in seconds, set the playback rate, or both"
@@ -512,7 +655,7 @@ class GStreamerPipeline():
                 with self.seeklock:
                     if (not flush) and self.pipeline.get_state(1000_000_000)[1] == Gst.State.PAUSED:
                         raise RuntimeError(
-                            "Cannot do non-flushing seek in paused state as this may deadlock.  State has changed while request inflight, request cancelled.")
+                            "Cannot do non-flushing seek in paused as this may deadlock.  State has changed while request inflight, request cancelled.")
 
                     self.pipeline.seek(rate, Gst.Format.TIME,
                                        flags, Gst.SeekType.NONE if t is None else Gst.SeekType.SET, max(
@@ -615,11 +758,35 @@ class GStreamerPipeline():
 
         return True
 
+    # def appsinkhandler(self,appsink, user_data):
+    #     sample = appsink.emit("pull-sample")
+    #     gst_buffer = sample.get_buffer()
+    #     (ret, buffer_map) = gst_buffer.map(Gst.MapFlags.READ)
+    #     rpc[0]("_onAppsinkData", [str(user_data), base64.b64encode(buffer_map.data).decode()])
+    #     return Gst.FlowReturn.OK
+
     def onMessage(self, src, name, s):
         if s.get_name() == 'level':
             rms = sum([i for i in s['rms']]) / len(s['rms'])
             decay = sum([i for i in s['decay']]) / len(s['decay'])
             rpc[0]("onLevelMessage", [str(src), rms, decay])
+
+        elif s.get_name() == 'motion':
+            if s.has_field("motion_begin"):
+                rpc[0]("onMotionBegin", [])
+            if s.has_field("motion_finished"):
+                rpc[0]("onMotionEnd", [])
+
+        elif s.get_name() == 'GstVideoAnalyse':
+            rpc[0]("onVideoAnalyze", [{'luma-average': s.get_double('luma-average')[
+                   1], 'luma-variance':s.get_double('luma-variance')[1]}])
+
+        elif s.get_name() == 'barcode':
+            rpc[0]("onBarcode", [s.get_string("type"),
+                   s.get_string("symbol"), s.get_int("quality")[1]])
+
+        elif s.get_name() == 'GstMultiFileSink':
+            rpc[0]("onMultiFileSink", [''])
 
         elif s.get_name() == 'pocketsphynx':
             if s.get_value('hypothesis'):
@@ -645,7 +812,7 @@ class GStreamerPipeline():
 
     def _waitForState(self, s, timeout=10):
         t = time.monotonic()
-        i = 0.001
+        i = 0.01
         while not self.pipeline.get_state(1000_000_000)[1] == s:
             if time.monotonic() - t > timeout:
                 raise RuntimeError("Timeout, pipeline still in: ",
@@ -680,10 +847,12 @@ class GStreamerPipeline():
             # Convert to monotonic time that the nternal APIs use
             self.startTime = time.monotonic() - timeAgo
 
-            if not self.pipeline.get_state(1000_000_000)[1] == (Gst.State.PAUSED, Gst.State.PLAYING):
-                with self.seeklock:
-                    self.pipeline.set_state(Gst.State.PAUSED)
-                self._waitForState(Gst.State.PAUSED)
+            # Go straight to playing, no need to locally do paused if we aren't using that feature
+            if self.systemTime or effectiveStartTime or segment:
+                if not self.pipeline.get_state(1000_000_000)[1] == (Gst.State.PAUSED, Gst.State.PLAYING):
+                    with self.seeklock:
+                        self.pipeline.set_state(Gst.State.PAUSED)
+                    self._waitForState(Gst.State.PAUSED)
 
             # Seek to where we should be, if we had actually
             # Started when we should have. We want to get everything set up in the pause state
@@ -694,11 +863,12 @@ class GStreamerPipeline():
             if self.systemTime:
                 self.seek(time.monotonic() - self.startTime)
 
-            if segment:
+            elif segment:
                 self.seek(0, segment=True, flush=True)
 
             with self.seeklock:
                 self.pipeline.set_state(Gst.State.PLAYING)
+
             self._waitForState(Gst.State.PLAYING, timeout)
 
             self.running = True
@@ -811,7 +981,8 @@ class GStreamerPipeline():
                 # On account of the race condition, it is possible that the thread actually never did start yet
                 # So we have to ignore the exit flag stuff.
 
-                # It shouldn't really be critical, most likely the thread can stop on it's own time anyway, because it doesn't do anything without getting the lock.
+                # It shouldn't really be critical, most likely the thread can stop on it's own time anyway,
+                # because it doesn't do anything without getting the lock.
                 if self.threadStarted:
                     while not self.exitSignal:
                         time.sleep(0.1)
@@ -851,21 +1022,27 @@ class GStreamerPipeline():
 
                     self._stopped = True
         finally:
-            import sys
-            sys.exit()
+           stopflag[0]=1
 
-
-
-    def addPILCapture(self, resolution, connectToOutput=None, buffer=1):
-        "Return a video capture object"
+    def addPILCapture(self, resolution=None, connectToOutput=None, buffer=1, method=1):
+        "Return a video capture object.  Now that we use BG threads this is just used to save snapshots to file"
+        if resolution:
+            scale = self.addElement("videoscale", method=method)
+            caps = self.addElement("capsfilter", caps="video/x-raw,width=" +
+                                   str(resolution[0]) + ",height=" + str(resolution[0]))
         conv = self.addElement("videoconvert", connectToOutput=connectToOutput)
-        scale = self.addElement("videoscale")
-        caps = self.addElement("capsfilter", caps="video/x-raw,width=" +
-                               str(resolution[0]) + ",height=" + str(resolution[0]) + ", format=RGB")
+        caps = self.addElement("capsfilter", caps="video/x-raw,format=RGB")
+
         appsink = self.addElement(
             "appsink", drop=True, sync=False, max_buffers=buffer)
 
-        return PILCapture(appsink)
+        p = PILCapture(appsink)
+        elementsByShortId[id(p)] = p
+        self.pilcaptures.append(p)
+        return p
+
+    def addRemotePILCapture(self, *a, **k):
+        return id(self.addPILCapture(*a, **k))
 
     def addPILSource(self, resolution, buffer=1, greyscale=False):
         "Return a video source object that we can use to put PIL buffers into the stream"
@@ -876,7 +1053,7 @@ class GStreamerPipeline():
         scale = self.addElement("videoscale")
 
         # Start with a blck image to make things prerooll
-        if(greyscale):
+        if (greyscale):
             appsrc.emit(
                 "push-buffer", Gst.Buffer.new_wrapped(bytes(resolution[0] * resolution[1])))
         else:
@@ -899,6 +1076,25 @@ class GStreamerPipeline():
         appsrc = self.addElement("appsrc", caps=caps, connectToOutput=False)
         return AppSource(appsrc)
 
+    def pullBuffer(self, element, timeout=0.1):
+        if isinstance(element, int):
+            element = elementsByShortId[element]
+
+        sample = self.appsink.emit('try-pull-sample', timeout * 10**9)
+        if not sample:
+            return None
+
+        buf = sample.get_buffer()
+        caps = sample.get_caps()
+
+        return base64.b64encode(buf.extract_dup(0, buf.get_size()))
+
+    def pullToFile(self, element, fn):
+        if isinstance(element, int):
+            element = elementsByShortId[element]
+
+        return element.pullToFile(fn)
+
     def addElement(self, t, name=None, connectWhenAvailable=False, connectToOutput=None, sidechain=False, **kwargs):
 
         with self.lock:
@@ -906,6 +1102,9 @@ class GStreamerPipeline():
                 raise ValueError("Element type must be string")
 
             e = Gst.ElementFactory.make(t, name)
+
+            # if t=='appsink':
+            #     e.connect("new-sample", self.appsinkhandler, name)
 
             if e == None:
                 raise ValueError("Nonexistant element type: " + t)
@@ -918,40 +1117,54 @@ class GStreamerPipeline():
                 self.setProperty(e, i, v)
 
             self.pipeline.add(e)
-
+            op = []
             # May need to use an ID if its a remore command
             if connectToOutput:
-                if isinstance(connectToOutput, int):
-                    connectToOutput = elementsByShortId[connectToOutput]
+                if not isinstance(connectToOutput, (list, tuple)):
+                    cto = [connectToOutput]
+                else:
+                    cto = connectToOutput
 
-                if not id(connectToOutput) in self.elementTypesById:
-                    raise ValueError("Cannot connect to the output of: " +
-                                     str(connectToOutput) + ", no such element in pipeline.")
+                for connectToOutput in cto:
 
-            # Element doesn't have an input pad, we want this to be usable as a fake source to go after a real source if someone
-            # wants to use it as a effect
-            if t == "audiotestsrc":
-                connectToOutput = False
+                    if not connectToOutput is False:
+                        if isinstance(connectToOutput, int):
+                            connectToOutput = elementsByShortId[connectToOutput]
 
-            # This could be the first element
-            if self.elements and (not (connectToOutput is False)):
-                connectToOutput = connectToOutput or self.elements[-1]
+                        if not id(connectToOutput) in self.elementTypesById:
+                            raise ValueError("Cannot connect to the output of: " +
+                                             str(connectToOutput) + ", no such element in pipeline.")
+                        op.append(connectToOutput)
+            else:
+                # One auto connect
+                if connectToOutput is None:
+                    op = [None]
 
-                # Fakesinks have no output, we automatically don't connect those
-                if self.elementTypesById[id(connectToOutput)] == 'fakesink':
+            for connectToOutput in op:
+                # Element doesn't have an input pad, we want this to be usable as a fake source to go after a real source if someone
+                # wants to use it as a effect
+                if t == "audiotestsrc":
                     connectToOutput = False
 
-                # Decodebin doesn't have a pad yet for some awful reason
-                elif (self.elementTypesById[id(connectToOutput)] == 'decodebin') or connectWhenAvailable:
-                    eid = time.time()
-                    f = linkClosureMaker(weakref.ref(
-                        self), connectToOutput, e, connectWhenAvailable, eid)
+                # This could be the first element
+                if self.elements and (not (connectToOutput is False)):
+                    connectToOutput = connectToOutput or self.elements[-1]
 
-                    self.waitingCallbacks[eid] = f
-                    # Dummy 1 param because some have claimed to get segfaults without
-                    connectToOutput.connect("pad-added", f, 1)
-                else:
-                    link(connectToOutput, e)
+                    # Fakesinks have no output, we automatically don't connect those
+                    if self.elementTypesById[id(connectToOutput)] == 'fakesink':
+                        connectToOutput = False
+
+                    # Decodebin doesn't have a pad yet for some awful reason
+                    elif (self.elementTypesById[id(connectToOutput)] == 'decodebin') or connectWhenAvailable:
+                        eid = time.time()
+                        f = linkClosureMaker(weakref.ref(
+                            self), connectToOutput, e, connectWhenAvailable, eid)
+
+                        self.waitingCallbacks[eid] = f
+                        # Dummy 1 param because some have claimed to get segfaults without
+                        connectToOutput.connect("pad-added", f, 1)
+                    else:
+                        link(connectToOutput, e)
 
             # Sidechain means don't set this element as the
             # automatic thing that the next entry links to
@@ -968,7 +1181,7 @@ class GStreamerPipeline():
             self.proxyToElement[id(p)] = e
             # List it under the proxy as well
             self.elementTypesById[id(p)] = t
-            elementsByShortId[id(p)]=e
+            elementsByShortId[id(p)] = e
 
         # Mark as a JACK user so we can stop if needed for JACK
         # Stuff
@@ -979,10 +1192,6 @@ class GStreamerPipeline():
 
     def addElementRemote(self, *a, **k):
         return id(self.addElement(*a, **k))
-
-    def addElementRemote(self, *a, **k):
-        return id(self.addElement(*a, **k))
-
 
     def addJackMixerSendElements(self, target, idee, volume=-60):
         with self.lock:
@@ -1009,14 +1218,13 @@ class GStreamerPipeline():
             e2.set_property('connect', False)
 
             e2.latency_time = 10
-           
 
             tee_src_pad_template = e.get_pad_template("src_%u")
             tee_audio_pad = e.request_pad(tee_src_pad_template, None, None)
             tee_audio_pad2 = e.request_pad(tee_src_pad_template, None, None)
 
             if self.elements:
-               link(self.elements[-1], e)
+                link(self.elements[-1], e)
             link(tee_audio_pad, q)
             link(tee_audio_pad2, q2)
             self.elements.append(q2)
@@ -1024,9 +1232,7 @@ class GStreamerPipeline():
             link(q, l)
             link(l, e2)
 
-            return id(l),id(e2)
-
-
+            return id(l), id(e2)
 
     def setProperty(self, element, prop, value):
         with self.lock:
@@ -1042,6 +1248,9 @@ class GStreamerPipeline():
                 value = Gst.Caps(value)
                 self.weakrefs[str(value)] = value
 
+            if prop.startswith("_"):
+                prop = prop[1:]
+                
             prop = prop.replace("_", "-")
 
             prop = prop.split(":")
@@ -1059,15 +1268,31 @@ class GStreamerPipeline():
                 return True
             if self.pipeline.get_state(1000_000_000)[1] == Gst.State.PLAYING:
                 return True
+            
 
-gstp=GStreamerPipeline()
-rpc[0] = jsonrpyc.RPC(target=gstp)
+gstp = None
+
+ppid = os.getppid()
 
 
-def print(*a):
-    rpc[0]("print", str(a))
+def main():
+    global gstp
 
-while not rpc[0].threadStopped:
-    time.sleep(10)
-    if not check_pid(ppid):
-        sys.exit()
+    gstp = GStreamerPipeline()
+    rpc[0] = jsonrpyc.RPC(target=gstp)
+
+
+    # def print(*a):
+    #     rpc[0]("print", [str(a)])
+
+    while not rpc[0].threadStopped:
+        time.sleep(1)
+
+        if (not check_pid(ppid)) or stopflag[0]:
+            sys.exit()
+
+        if not os.getppid() == ppid:
+            return
+
+if __name__ == '__main__':
+    main()

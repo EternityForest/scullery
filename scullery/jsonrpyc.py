@@ -26,9 +26,12 @@ import time
 import threading
 import weakref
 import traceback
+import os
 
 
-server_only=False
+server_only = False
+
+
 class Spec(object):
     """
     This class wraps methods that create JSON-RPC 2.0 compatible string representations of
@@ -54,7 +57,8 @@ class Spec(object):
         Raises a *TypeError* when *id* is neither an integer nor a string.
         """
         if (id is not None or not allow_empty) and not isinstance(id, (int, str)):
-            raise TypeError("id must be an integer or string, got {} ({})".format(id, type(id)))
+            raise TypeError(
+                "id must be an integer or string, got {} ({})".format(id, type(id)))
 
     @classmethod
     def check_method(cls, method):
@@ -62,7 +66,8 @@ class Spec(object):
         Value check for *method* entries. Raises a *TypeError* when *method* is not a string.
         """
         if not isinstance(method, str):
-            raise TypeError("method must be a string, got {} ({})".format(method, type(method)))
+            raise TypeError(
+                "method must be a string, got {} ({})".format(method, type(method)))
 
     @classmethod
     def check_code(cls, code):
@@ -71,10 +76,12 @@ class Spec(object):
         *KeyError* when there is no :py:class:`RPCError` subclass registered for that *code*.
         """
         if not isinstance(code, int):
-            raise TypeError("code must be an integer, got {} ({})".format(id, type(id)))
+            raise TypeError(
+                "code must be an integer, got {} ({})".format(id, type(id)))
 
         if not get_error(code):
-            raise ValueError("unknown code, got {} ({})".format(code, type(code)))
+            raise ValueError(
+                "unknown code, got {} ({})".format(code, type(code)))
 
     @classmethod
     def request(cls, method, id=None, params=None):
@@ -128,7 +135,8 @@ class Spec(object):
 
         # build the response string
         try:
-            res = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}".format(id, json.dumps(result))
+            res = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}".format(
+                id, json.dumps(result))
         except Exception as e:
             raise RPCParseError(str(e))
 
@@ -149,7 +157,8 @@ class Spec(object):
 
         # build the inner error data
         message = get_error(code).title
-        err_data = "{{\"code\":{},\"message\":\"{}\"".format(code, message).replace("\n",'').replace("\r",'')
+        err_data = "{{\"code\":{},\"message\":\"{}\"".format(
+            code, message).replace("\n", '').replace("\r", '')
 
         # insert data when given
         if data is not None:
@@ -165,11 +174,14 @@ class Spec(object):
             id = json.dumps(id)
 
         # start building the error string
-        err = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{}}}".format(id, err_data)
+        err = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{}}}".format(
+            id, err_data)
 
         return err
 
+
 leakDebug = weakref.WeakValueDictionary()
+
 
 class RPC(object):
     """
@@ -252,7 +264,7 @@ class RPC(object):
 
         # the wrapped target object
         self.target = weakref.ref(target)
-        leakDebug[id(self)]=self
+        leakDebug[id(self)] = self
 
         # open streams
         stdin = sys.stdin if stdin is None else stdin
@@ -264,7 +276,7 @@ class RPC(object):
         self._i = -1
         self._callbacks = {}
         self._results = {}
-        self.stopFlag=False
+        self.stopFlag = False
 
         # create and optionall start the watchdog
         kwargs["start"] = watch
@@ -273,22 +285,20 @@ class RPC(object):
 
         self.threadStopped = False
 
-
-
     def __del__(self):
-       if server_only:
-        try:
-            self.stdin.close()
-        except:
-            pass
-        try:
-            self.stdout.close()
-        except:
-            pass
-            
-        watchdog = getattr(self, "watchdog", None)
-        if watchdog:
-            watchdog.stop()
+        if server_only:
+            try:
+                self.stdin.close()
+            except Exception:
+                pass
+            try:
+                self.stdout.close()
+            except Exception:
+                pass
+
+            watchdog = getattr(self, "watchdog", None)
+            if watchdog:
+                watchdog.stop()
 
     def __call__(self, *args, **kwargs):
         """
@@ -296,7 +306,7 @@ class RPC(object):
         """
         return self.call(*args, **kwargs)
 
-    def call(self, method, args=(), kwargs=None, callback=None, block=0,timeout=60):
+    def call(self, method, args=(), kwargs=None, callback=None, block=0, timeout=60):
         """
         Performs an actual remote procedure call by writing a request representation (a string) to
         the output stream. The remote RPC instance uses *method* to route to the actual method to
@@ -333,7 +343,7 @@ class RPC(object):
         self.fastResponseFlag.clear()
 
         self._write(req)
-        
+
         st = time.time()
 
         # blocking return value behavior
@@ -347,11 +357,11 @@ class RPC(object):
                         raise result
                     else:
                         return result
-                #Block for up to the specified time, but also, whenever any new data comes in we immediately check.
+                # Block for up to the specified time, but also, whenever any new data comes in we immediately check.
 
                 if self.fastResponseFlag.wait(block):
                     self.fastResponseFlag.clear()
-                if timeout and (time.time()-st)> timeout:
+                if timeout and (time.time() - st) > timeout:
                     raise TimeoutError("Request Timed Out")
 
     def _handle(self, line):
@@ -361,10 +371,9 @@ class RPC(object):
         """
         try:
             obj = json.loads(line)
-        except:
-
-            print("Bad JSON",line)
-            #What if we just didn't?
+        except Exception:
+            print("Bad JSON", line)
+            # What if we just didn't?
             return
 
         # dispatch to the correct handler
@@ -395,10 +404,10 @@ class RPC(object):
                 if isinstance(e, RPCError):
                     err = Spec.error(req["id"], e.code, e.data)
                 else:
-                    err = Spec.error(req["id"], -32603, str(traceback.format_exc()))
+                    err = Spec.error(req["id"], -32603,
+                                     str(traceback.format_exc()))
 
                 self._write(err)
-        
 
     def _handle_response(self, res):
         """
@@ -481,7 +490,8 @@ class RPC(object):
         self.stdout.flush()
 
 
-wdl=weakref.WeakValueDictionary()
+wdl = weakref.WeakValueDictionary()
+
 
 class Watchdog(threading.Thread):
     """
@@ -507,7 +517,7 @@ class Watchdog(threading.Thread):
 
     def __init__(self, rpc, name="nostartstoplog.rpcwatchdog", interval=0.02, daemon=False, start=True):
         super(Watchdog, self).__init__()
-        wdl[id(self)]=self
+        wdl[id(self)] = self
 
         # store attributes
         self.rpc = weakref.ref(rpc)
@@ -559,50 +569,58 @@ class Watchdog(threading.Thread):
 
                 # read from stdin depending on whether it is a tty or not
                 if rpc.stdin.isatty():
-                    cur_pos =rpc.stdin.tell()
+                    cur_pos = rpc.stdin.tell()
                     if cur_pos != last_pos:
                         rpc.stdin.seek(last_pos)
-                        lines =rpc.stdin.readlines()
-                        last_pos =rpc.stdin.tell()
+                        lines = rpc.stdin.readlines()
+                        last_pos = rpc.stdin.tell()
                         rpc.stdin.seek(cur_pos)
                 else:
                     try:
-                        rfds, wfds, efds = select.select( [ sys.stdin.fileno()], [], [], self.interval)
-                        #On some systems it seems we never got the select return,
-                        #So we had to resort to polling way too much.
-                        #It seems that might be fixed, so if possible we go back to slower
-                        #polling and select() based response.
+                        rfds, wfds, efds = select.select(
+                            [rpc.stdin.fileno()], [], [], self.interval)
+                        # On some systems it seems we never got the select return,
+                        # So we had to resort to polling way too much.
+                        # It seems that might be fixed, so if possible we go back to slower
+                        # polling and select() based response.
                         if rfds:
-                            self.interval=0.1
+                            self.interval = 0.1
+                        # We should exit if we detect we have been adopted by pid1
+                        if os.getppid() < 2:
+                            exit(1)
+
                         lines = [rpc.stdin.readline()]
                     except IOError:
                         # prevent residual race conditions occurring when stdin is closed externally
                         pass
 
                 # handle new lines if any
-                if lines:
+                if lines and lines[0]:
                     rpc.fastResponseFlag.set()
                     for line in lines:
-                        line = line.decode("utf-8").strip()
+                        try:
+                            line = line.decode("utf-8").strip()
+                        except Exception:
+                            print("Bad line", line)
                         if line:
                             rpc._handle(line)
                 else:
                     self._stop.wait(self.interval)
                 del rpc
-        except:
-            print(traceback.format_exc())      
+        except Exception:
+            print(traceback.format_exc())
 
         finally:
             if server_only:
                 try:
                     self.rpc().stdin.close()
                     self.rpc().stdout.close()
-                except:
+                except Exception:
                     pass
 
             x = self.rpc()
             if x:
-                x.threadStopped=True
+                x.threadStopped = True
 
 
 class RPCError(Exception):

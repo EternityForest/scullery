@@ -1,21 +1,18 @@
 # scullery
-Python library for things like media playback, thread pools, and a message bus. It is essentially the parts of KaithemAutomation
-that make sense independantly.
 
-There is a lot of functionality planned, but it's not at all neccesary to use or understand all of it to use one piece.
+Python library that provides some core parts of KaithemAutomation, especially things related to media handling.
 
-You will obviously need the Python Gstreamer bindings for those features(but not unrelated features), and several other
-dependancies.
+* Data persistance
+* Message bus
+* Thread pool worker(At one point, Python did not natively have this, may be deprecated now that it does)
+* Media handling library that gives a much nicer interface to gstreamer.
+* JACK connection manager(No longer tested with actual JACK, meant for pipewire)
 
 
 
 ## Intro
 See example.py for more details. Also see the equally simple audio and video player.
 
-## Testing
-Warning, takes over audio, starts JACK, makes noise:python3 -m unittest discover tests
-
-Running just one test suite: python3 -m unittest tests/testFluidSynth.py
 
 ## Examples
 ```python
@@ -86,65 +83,11 @@ supported.
 
 ### scullery.mqtt
 
-#### scullery.mqtt.getConnection(server, port=1883, password=None, messageBusName=None)
-
-Creates an MQTT connection. To speify username, use user@server.net syntax.
-
-To use an internal fake server for testing, use the server "__virtual__".
-
-This connection handles automatically reconnecting and resubscribing for you.  If a connection to a user@server already exists,
-it will return that connection.  
-
-All traffic goes through the internal message bus first, on topics that will begin with /mqtt/. Normally, the internal name is server+":"+port
-But you can specify it explicitly.  The topic name also acts as a sort of internal ID, and the system understands new connections with the same ID
-to be replacements for the old one. All subscriptions will carry over.
-
-Resubscriptions are stored in a master list.  If you subscribe, then delete the connection and recreate a new connection with the same message bus
-name, everything will carry on like nothing happened, so long as you kept a reference to the subscribed function.
-
-You can even create one connection, delete it, make a new one with the same internal messageBusName, to a different server, and all the old subscriptions
-will be "remade" at the new server, as the system knows that the new connection is a "replacement" for the old name.
-
-You cannot have two connections to the same user@server combo with different internal names or passwords, however, if you do not supply a password,
-and the existing connection has one, it will still work as it is simply returning the existing one.
-
-This feature is meant to make GUI config easier, so that changing a connection doesn't break all existing users of that connection.
-
-##### Passive connections
-
-If server is '', it will not create any real connections, but will still publish and subscribe to the internal
-bus, meaning that you can use it as a "passive" connection which uses a real connection configured elsewhere.
-
-Note that you will(currently) only recieve through passives if the backend also subscribed to that topic, subscribing through a passive
-connecting is truly passive, but this may change. At the moment, think of them like "spy" connections.
-
-To use a passive connection, you obviously need to specify the same messageBusName on the passive and backend.
-
-##### MQTTConnection.publish(self, topic, message, qos=2, encoding="json"):
-
-Encoding may be: json,msgpack, raw, utf8
-
-##### MQTTConnection.subscribe(self, topic, function, qos=2, encoding="json")
-Function is passed f(topic,message). 
-
-Scullery only weakly references, so if you delete or otherwise let the function be GCed, it is auto unsubscribed.
-
-##### MQTTConnection.unsubscribe(self, topic, function)
-Automatically unsubscribes from the actual MQTT topic when there are no more local subscribers. Note that subscriptions through a "
-
-
-
-
-
-# Everything below this should be moved to a separate library.
-
-It will still be included as a compatibility stub that just calls into the external stuff.
-
-
+Undocumented, deprecated. The functionality is better done by raw Paho.
 
 ### scullery.jack
 
-This submodule requires pyjack, and of course Jack. You should normally import this somewhere if using IceFlow with JACK.
+This submodule requires pyjack, and of course Jack.
 
 #### Message Bus activity
 
@@ -157,42 +100,8 @@ This submodule requires pyjack, and of course Jack. You should normally import t
 ##### system/jack/started
 When jack is started or restarted
 
- 
-
-#### Config:
-```python
-
-#Only relevant if manageJackProcess is True
-jackPeriods = 3
-periodSize = 128
-
-#These apply to soundcards other than the main system card
-usbPeriodSize = 384
-usbLatency = 384
-
-realtimePriority = 70
-
-#Do we want to run PulseAudio and the pulse jack backend?
-#Note that we automatically kill any pulseaudio process we find before
-usePulse= True
-
-sharePulse = None
-
-#Should we create alsa_in and alsa_out ports for every soundcard, with persistant names?
-manageSoundcards = True
-
-#Should we start the jack process itself, and auto restart it?
-#If False, we just try to use an existing one.
-#Must set this to True before calling startManaging!
-manageJackProcess = False
-```
-
-
 #### sullery.jack.startManaging()
 Start the worker thread and enable management functions
-
-#### scullery.jack.startJackServer()
-Actually start the jack server. They are separate because you may want to do this yourself.
 
 #### scullery.jack.Airwire(from,to)
 Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.

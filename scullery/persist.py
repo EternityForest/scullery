@@ -20,6 +20,8 @@ if sys.platform.startswith('linux'):
 if sys.platform.startswith('darwin'):
     posix_rename =True
 
+# Purely just a dict for the rest of the application to keep track of what files are changed and not saved.
+unsavedFiles = {}
 
 def resolvePath(fn,expand=True):
     if not expand:
@@ -30,12 +32,8 @@ def resolvePath(fn,expand=True):
 
 #TODO: Ensure only one thread can save a file at a time
 
-if sys.version_info <(3,0):
-    import StringIO
-    strio = StringIO.StringIO
-else:
-    import io
-    strio = io.BytesIO
+import io
+strio = io.BytesIO
 
 persisters = []
 
@@ -51,9 +49,9 @@ def saveAllAtExit():
         i = persisters.pop()()
         try:
             i.save()
-        except:
-            logging.exception()
-
+        except Exception:
+            logging.exception("err")
+import stat
 def chmod_private_try(p, execute=True):
     try:
         if execute:
@@ -72,7 +70,7 @@ class Persister():
         self.fn= fn
         try:
             self.reload()
-        except:
+        except Exception:
             self.value = default
         torm = []
         #Before we add ourselves, clear out any old persisters that are no longer needed.
@@ -142,6 +140,11 @@ def save(data,fn, *,private=False,backup=True, expand=True, md5=False,nolog=Fals
         elif x.endswith(".yaml"):
             import yaml
             data = yaml.dump(data).encode('utf8')
+
+        elif x.endswith(".toml"):
+            import toml
+            data = toml.dumps(data).encode("utf8")
+
         elif x.endswith(".txt") or x.endswith(".md") or x.endswith(".rst"):
             data = (str(data).encode('utf8'))
         elif x.endswith(".bin"):
@@ -232,7 +235,12 @@ def load(filename, *,expand=True):
                 r=json.loads(f.read().decode('utf8'))
             elif x.endswith(".yaml"):
                 import yaml
-                r=yaml.load(f.read().decode('utf8'))
+                r=yaml.load(f.read().decode('utf8'), Loader=yaml.SafeLoader)
+
+            elif x.endswith(".toml"):
+                import toml
+                r = toml.loads(f.read().decode('utf8'))
+
             elif x.endswith(".txt") or x.endswith(".md") or x.endswith(".rst"):
                 r=f.read().decode('utf8')
             elif x.endswith(".bin"):
@@ -242,12 +250,12 @@ def load(filename, *,expand=True):
         except Exception as e:
             try:
                 f.close()
-            except:
+            except Exception:
                 pass
             raise
         try:
             f.close()
-        except:
+        except Exception:
             pass
 
         return r

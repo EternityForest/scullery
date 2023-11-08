@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scullery",
-    version="0.1.8",
+    version="0.1.9",
     author="Daniel Dunn",
     author_email="dannydunn@eternityforest.com",
     description="A utility library based on KaithemAutomation featuring a GStreamer wrapper",
@@ -13,6 +13,9 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/EternityForest/scullery",
     packages=setuptools.find_packages(),
+    package_data={'':["**/scullery/thirdparty/baresip/**"]},
+
+
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -26,7 +29,6 @@ setuptools.setup(
           "sf2utils",
           "pyFluidSynth",
           "paho-mqtt",
-          "pyreap"
       ],
 )
 
