@@ -36,12 +36,12 @@ class LocalBareSIP(baresipy.BareSIP):
     def handle_call_established(self):
         if self.useJack:
             # Assume we don't know which one is which.
-            jn1=self.jackNames[0]
-            jn2= self.jackNames[1]
+            jn1 = self.jackNames[0]
+            jn2 = self.jackNames[1]
 
             if self.jackSource:
                 self.controller().inJackAirwire = jacktools.Airwire(self.jackSource, jn1)
-                self.controller().inJackAirwire2 = jacktools.Airwire(self.jackSource,jn2)
+                self.controller().inJackAirwire2 = jacktools.Airwire(self.jackSource, jn2)
                 self.controller().inJackAirwire.connect()
                 self.controller().inJackAirwire2.connect()
 
@@ -55,23 +55,23 @@ class LocalBareSIP(baresipy.BareSIP):
 
             # Undo the system connection it will try to do.
             if not self.jackSink == 'system':
-                outPorts = jacktools.getPorts(
+                outPorts = jacktools.get_ports(
                     jn1+":*", is_output=True, is_audio=True)
-                outPorts += jacktools.getPorts(jn2 +
-                                          ":*", is_output=True, is_audio=True)
+                outPorts += jacktools.get_ports(jn2 +
+                                                ":*", is_output=True, is_audio=True)
 
-                inPorts = jacktools.getPorts(
+                inPorts = jacktools.get_ports(
                     "system:*", is_input=True, is_audio=True)
                 for i in outPorts:
                     for j in inPorts:
                         jacktools.disconnect(i.name, j.name)
 
             if not self.jackSource == 'system':
-                inPorts = jacktools.getPorts(
+                inPorts = jacktools.get_ports(
                     jn1+":*", is_input=True, is_audio=True)
-                inPorts += jacktools.getPorts(jn2+":*",
-                                         is_input=True, is_audio=True)
-                outPorts = jacktools.getPorts(
+                inPorts += jacktools.get_ports(jn2+":*",
+                                               is_input=True, is_audio=True)
+                outPorts = jacktools.get_ports(
                     "system:*", is_output=True, is_audio=True)
                 for i in outPorts:
                     for j in inPorts:
@@ -97,7 +97,7 @@ class SipUserAgent():
 
     def call(self, number):
         self.agent.call(number)
-    
+
     def hang(self):
         self.agent.hang()
 
@@ -112,4 +112,3 @@ class SipUserAgent():
 
     def close(self):
         self.agent.quit()
-

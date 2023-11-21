@@ -54,14 +54,14 @@ def _shouldReRaiseAttrErr():
     return True
 
 
-def defaultErrorHandler(*a):
+def default_error_handler(*a):
     print(traceback.format_exc())
 
 
 subscriberErrorHandlers = []
 
 
-def handleError(f: Callable[..., Any], topic: str, value: Any):
+def handle_error(f: Callable[..., Any], topic: str, value: Any):
     log.exception("Message bus subscriber error")
     if hasattr(f, "messagebusWrapperFor"):
         f = f.messagebusWrapperFor
@@ -72,7 +72,7 @@ def handleError(f: Callable[..., Any], topic: str, value: Any):
             print(traceback.format_exc())
 
 
-def runFunction(f, a):
+def run_function(f, a):
     return f(*a)
 
 
@@ -137,7 +137,7 @@ class MessageBus(object):
                 self.subscribers_immutable = copy.deepcopy(self.subscribers)
 
     @staticmethod
-    def parseTopic(topic: str) -> Set[str]:
+    def parse_topic(topic: str) -> Set[str]:
         "Parse the topic string into a list of all subscriptions that could possibly match."
         global parsecache
         # Since this is a pure function(except the caching itself) we can cache it
@@ -236,7 +236,7 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handleError(f2, topic, message)
+                                handle_error(f2, topic, message)
                             alreadyLogged[0] = True
                     except Exception as e:
                         print("err", e)
@@ -250,7 +250,7 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handleError(f2, topic, message)
+                                handle_error(f2, topic, message)
                             alreadyLogged[0] = True
 
                     except Exception as e:
@@ -265,7 +265,7 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handleError(f2, topic, message)
+                                handle_error(f2, topic, message)
                             alreadyLogged[0] = True
 
                     except Exception as e:
@@ -280,7 +280,7 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handleError(f2, topic, message)
+                                handle_error(f2, topic, message)
                             alreadyLogged[0] = True
                     except Exception as e:
                         print("err", e)
@@ -297,7 +297,7 @@ class MessageBus(object):
 
         executor = executor or self.executor
 
-        matchingtopics = self.parseTopic(topic)
+        matchingtopics = self.parse_topic(topic)
         # We can't iterate on anything that could possibly change so we make copies
         d = self.subscribers_immutable
         for i in matchingtopics:
@@ -312,7 +312,7 @@ class MessageBus(object):
                     # We ignore both of these errors and move on
                     executor(f, (topic, message, errors, timestamp, annotation))
 
-    def postMessage(self, topic: str, message: Any, errors: bool = True, timestamp: Optional[float] = None, annotation: Any = None, synchronous: bool = False):
+    def post_message(self, topic: str, message: Any, errors: bool = True, timestamp: Optional[float] = None, annotation: Any = None, synchronous: bool = False):
         # Use the executor to run the post message job
         # To allow for the possibility of it running in the background as a thread
         topic = normalize_topic(topic)
@@ -323,11 +323,11 @@ class MessageBus(object):
 
         timestamp = timestamp or time.monotonic()
         self._post(topic, message, errors, timestamp, annotation,
-                   runFunction if synchronous else None)
+                   run_function if synchronous else None)
 
 
 # Setup the default system messagebus
 _bus = MessageBus(workers.do)
 subscribe = _bus.subscribe
 unsubscribe = _bus.unsubscribe
-postMessage = _bus.postMessage
+post_message = _bus.post_message

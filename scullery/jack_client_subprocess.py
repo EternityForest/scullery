@@ -1,8 +1,11 @@
 
-_didPatch = False
-import jack
-import re
+import threading
+import weakref
+import traceback
 import time
+import re
+import jack
+_didPatch = False
 
 # This is NixOS compatibility stuff, we could be running as an output from setup.py
 # Or we could be running directly with python3 file.py
@@ -12,8 +15,6 @@ except ImportError:
     import jsonrpyc
 
 
-import traceback
-import weakref
 portInfoByID = weakref.WeakValueDictionary()
 
 
@@ -42,7 +43,6 @@ def portToInfo(p):
     return PortInfo(p.name, p.is_input, p.shortname, p.is_audio, list(p.aliases))
 
 
-import threading
 lock = threading.Lock()
 
 
@@ -95,7 +95,7 @@ class JackClientProxy():
             "Overseer" + str(time.monotonic()), no_start_server=True)
         self.clientObj.set_port_connect_callback(onPortConnect)
         self.clientObj.set_port_registration_callback(
-            onPortRegistered, only_available=False)
+            on_port_registered, only_available=False)
         self.clientObj.activate()
 
     def __init__(self) -> None:
@@ -169,11 +169,11 @@ class JackClientProxy():
                 lock.release()
 
 
-def onPortRegistered(port, registered):
+def on_port_registered(port, registered):
     if not port:
         return
     try:
-        rpc.call('onPortRegistered', [port.name, port.is_input,
+        rpc.call('on_port_registered', [port.name, port.is_input,
                  port.shortname, port.is_audio, registered])
     except Exception:
         print(traceback.format_exc())
@@ -181,7 +181,7 @@ def onPortRegistered(port, registered):
 
 
 def onPortConnect(a, b, c):
-    rpc.call("onPortConnected", [a.is_output, a.name, b.name, c])
+    rpc.call("on_port_connected", [a.is_output, a.name, b.name, c])
 
 
 jackclient = None

@@ -26,7 +26,7 @@ players = weakref.WeakValueDictionary()
 lock = threading.Lock()
 
 
-def allNotesOff():
+def all_notes_off():
     try:
         for i in players:
             players[i].fs.all_notes_off(-1)
@@ -42,7 +42,7 @@ def stop_all():
         pass
 
 
-def remakeAll():
+def remake_all():
     try:
         for i in players:
             players[i].close()
@@ -50,7 +50,7 @@ def remakeAll():
         pass
 
 
-def getGMInstruments():
+def get_gm_instruments():
     global gmInstruments
     if gmInstruments:
         return gmInstruments
@@ -59,7 +59,7 @@ def getGMInstruments():
     return gmInstruments
 
 
-def findGMInstrument(name, look_in_soundfont=None, bank=None):
+def find_gm_instrument(name, look_in_soundfont=None, bank=None):
     # Allow manually selected instruments
     try:
         return (bank, int(name))
@@ -98,7 +98,7 @@ def findGMInstrument(name, look_in_soundfont=None, bank=None):
                     return (sf2.raw.pdta['Phdr'][i][2], sf2.raw.pdta['Phdr'][i][1])
                 return (bank, sf2.raw.pdta['Phdr'][i][1])
 
-    x = getGMInstruments()
+    x = get_gm_instruments()
     for i in x:
         n = x[i].lower()
         n = n.replace("(", '').replace(')', '')
@@ -112,10 +112,10 @@ def findGMInstrument(name, look_in_soundfont=None, bank=None):
     raise ValueError("No matching instrument")
 
 
-def waitForJack():
+def wait_for_jack():
     from scullery import jacktools
     for i in range(10):
-        if not jacktools.getPorts():
+        if not jacktools.get_ports():
             time.sleep(1)
         else:
             return
@@ -123,7 +123,7 @@ def waitForJack():
     raise RuntimeError("It appears that JACK is not running")
 
 
-def findSoundFont(specific=None, extraFallback=None):
+def find_sound_font(specific=None, extra_fallback=None):
     # Support the debian, Arch, and EmberOS conventions
     l = ['/usr/share/sounds/sf3/MuseScore_General_Lite.sf3',
          '/var/public.files/emberos/SoundFonts/MuseScore_General.sf3',
@@ -140,19 +140,19 @@ def findSoundFont(specific=None, extraFallback=None):
         if os.path.exists(l):
             return l
 
-    return extraFallback
+    return extra_fallback
 
 
 class FluidSynth():
     defaultSoundfont = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
-    def __init__(self, soundfont=None, jackClientName=None,
-                 connectMidi=None, connectOutput=None, reverb=False, chorus=False, ondemand=True):
+    def __init__(self, soundfont=None, jack_client_name=None,
+                 connect_midi=None, connect_output=None, reverb=False, chorus=False, ondemand=True):
         players[id(self)] = self
 
-        if jackClientName:
+        if jack_client_name:
             from . import jacktools
-            waitForJack()
+            wait_for_jack()
 
         self.soundfont = soundfont or self.defaultSoundfont
 
@@ -175,23 +175,23 @@ class FluidSynth():
             self.sfid = self.fs.sfload(self.soundfont)
             usingJack = False
 
-            if jackClientName:
-                self.fs.setting("audio.jack.id", jackClientName)
+            if jack_client_name:
+                self.fs.setting("audio.jack.id", jack_client_name)
                 self.fs.setting("midi.jack.id", "fstest")
 
                 usingJack = True
 
-            if connectMidi:
+            if connect_midi:
                 pass
-                #self.midiAirwire = jackmanager.Mono
+                # self.midiAirwire = jackmanager.Mono
 
-            if connectOutput:
+            if connect_output:
                 self.airwire = jacktools.Airwire(
-                    jackClientName or 'KaithemFluidsynth', connectOutput)
+                    jack_client_name or 'KaithemFluidsynth', connect_output)
                 self.airwire.connect()
 
             if usingJack:
-                if not jackClientName:
+                if not jack_client_name:
                     self.fs.setting("audio.jack.id", "fstest")
                     self.fs.setting("midi.jack.id", "fstest")
 
@@ -199,7 +199,7 @@ class FluidSynth():
                 self.fs.start(driver="jack", midi_driver="jack")
 
             else:
-                #self.fs.setting("audio.driver", 'alsa')
+                # self.fs.setting("audio.driver", 'alsa')
                 self.fs.start()
             for i in range(16):
                 self.fs.program_select(i, self.sfid, 0, 0)
@@ -209,7 +209,7 @@ class FluidSynth():
         self.remake = remake
 
     def setInstrument(self, channel, instrument, bank=None):
-        bank, insNumber = findGMInstrument(instrument, self.soundfont, bank)
+        bank, insNumber = find_gm_instrument(instrument, self.soundfont, bank)
         self.fs.program_select(channel, self.sfid, bank, insNumber)
 
     def noteOn(self, channel, note, velocity):

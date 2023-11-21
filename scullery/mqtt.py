@@ -47,20 +47,18 @@ allSubscriptions = {}
 connectionsByBusName = weakref.WeakValueDictionary()
 
 
-
-
 def getWeakrefHandlers(self):
     self = weakref.ref(self)
 
     def on_connect(client, userdata=None, flags=None, rc=0, *a):
         if not rc == 0:
-            self().onDisconnected()
+            self().on_disconnected()
             return
 
         logger.info(
             "Connected to MQTT server: " + self().server + "result code " + str(rc)
         )
-        self().onStillConnected()
+        self().on_still_connected()
         # Don't block the network thread too long
 
         def subscriptionRefresh():
@@ -80,19 +78,19 @@ def getWeakrefHandlers(self):
     def on_disconnect(client, *a):
         if not self():
             return
-        logger.info("Disconnected from MQTT server: " + self().server)
-        self().onDisconnected()
-        logger.info("Disconnected from MQTT server: " + self().server)
+        logger.info("Dis_connected from MQTT server: " + self().server)
+        self().on_disconnected()
+        logger.info("Dis_connected from MQTT server: " + self().server)
 
     def on_message(client, userdata, msg):
         try:
             s = self()
             # Everything must be fine, because we are getting messages
-            messagebus.postMessage(
+            messagebus.post_message(
                 s.busPrefix + "/in/" + msg.topic,
                 msg.payload,
             )
-            s.onStillConnected()
+            s.on_still_connected()
         except Exception:
             print(traceback.format_exc())
 
@@ -102,33 +100,31 @@ def getWeakrefHandlers(self):
 # Used to fake a crash fro unit testing purposes
 
 
-
-
 class Connection:
     def __init__(
         self,
         server,
         port=1883,
         password=None,
-        messageBusName=None,
+        message_bus_name=None,
         *,
-        alertPriority="info",
-        alertAck=True,
-        connectionID=""
+        alert_priority="info",
+        alert_ack=True,
+        connection_id=""
     ):
-        # ConnectionID is used to ensure separate *physical* connections and prevent reuse
+        # connection_id is used to ensure separate *physical* connections and prevent reuse
         self.server = server
         self.port = port
         self.lock = threading.Lock()
         self.password = password
 
-        self.messageBusName = messageBusName
+        self.message_bus_name = message_bus_name
         self.connection = None
 
         # Defensive against None
-        connectionID = connectionID or ""
+        connection_id = connection_id or ""
 
-        self.isConnected = False
+        self.is_connected = False
 
         if not server:
             passive = True
@@ -140,11 +136,12 @@ class Connection:
         server = server or str(uuid.uuid4())
         virtual = server.startswith("__virtual__")
 
-        if passive and (not messageBusName):
+        if passive and (not message_bus_name):
             raise ValueError(
-                "No server specified. To create a passive connection you must specify an internal messageBusName"
+                "No server specified. To create a passive connection you must specify an internal message_bus_name"
             )
-        self.busPrefix = "/mqtt/" + server + ":" + str(port) + (connectionID or "")
+        self.busPrefix = "/mqtt/" + server + \
+            ":" + str(port) + (connection_id or "")
 
         self.subscriptions = {}
         logger.info("Creating connection object to: " + self.server)
@@ -169,11 +166,11 @@ class Connection:
         self.subscribeWrappers = {}
 
         with lock:
-            if connectionID:
-                connectionID = "?" + connectionID
-            self.connectionID = connectionID
+            if connection_id:
+                connection_id = "?" + connection_id
+            self.connection_id = connection_id
 
-            n = server + ":" + str(port) + connectionID
+            n = server + ":" + str(port) + connection_id
             if n in connections and connections[n]():
                 raise RuntimeError("There is already a connection")
             torm = []
@@ -184,15 +181,15 @@ class Connection:
                 del connections[i]
             connections[n] = weakref.ref(self)
 
-            if messageBusName:
-                self.busPrefix = "/mqtt/" + messageBusName
+            if message_bus_name:
+                self.busPrefix = "/mqtt/" + message_bus_name
 
             try:
                 if not virtual and not passive:
 
                     def out_handler(topic, message, timestamp, annotation):
                         self.connection.publish(
-                            topic[len(self.busPrefix + "/out/") :],
+                            topic[len(self.busPrefix + "/out/"):],
                             payload=message,
                             qos=annotation[0],
                             retain=annotation[1],
@@ -202,11 +199,13 @@ class Connection:
                     if not passive:
                         # Virtual loopback server doesn't actually use a real server
                         def out_handler(topic, message, timestamp, annotation):
-                            t = topic[len(self.busPrefix + "/out/") :]
-                            messagebus.postMessage(self.busPrefix + "/in/" + t, message)
+                            t = topic[len(self.busPrefix + "/out/"):]
+                            messagebus.post_message(
+                                self.busPrefix + "/in/" + t, message)
 
                 if not passive:
-                    messagebus.subscribe(self.busPrefix + "/out/#", out_handler)
+                    messagebus.subscribe(
+                        self.busPrefix + "/out/#", out_handler)
                     self.out_handler = out_handler
 
                 if not virtual and not passive:
@@ -219,18 +218,18 @@ class Connection:
                         host = x[0]
                         user = None
                     else:
-                        raise ValueError("More than one @ symbol in server name??")
+                        raise ValueError(
+                            "More than one @ symbol in server name??")
 
                     self.username = user
                     self.password = password
 
-                    self.configureAlert(alertPriority, alertAck)
-
+                    self.configure_alert(alert_priority, alert_ack)
 
                 else:
                     self.connection = None
-                    self.configureAlert(alertPriority, alertAck)
-                    self.onStillConnected()
+                    self.configure_alert(alert_priority, alert_ack)
+                    self.on_still_connected()
 
                 if not passive:
                     connectionsByBusName[self.busPrefix] = self
@@ -248,25 +247,25 @@ class Connection:
                     pass
                 raise
 
-    def onConnectionCrash(self, tb):
+    def on_connection_crash(self, tb):
         print(traceback.format_exc())
         self.reconnect()
 
-    def onStillConnected(self):
-        if not self.isConnected:
-            messagebus.postMessage(self.localStatusTopic, "connected")
-        self.isConnected = True
+    def on_still_connected(self):
+        if not self.is_connected:
+            messagebus.post_message(self.localStatusTopic, "connected")
+        self.is_connected = True
         pass
 
-    def onDisconnected(self):
+    def on_disconnected(self):
         logging.warning(
-            "A connection has disconnected from MQTT server: " + self.server
+            "A connection has dis_connected from MQTT server: " + self.server
         )
-        if self.isConnected:
-            messagebus.postMessage(self.localStatusTopic, "disconnected")
-        self.isConnected = False
+        if self.is_connected:
+            messagebus.post_message(self.localStatusTopic, "dis_connected")
+        self.is_connected = False
 
-    def subscribeToStatus(self, f):
+    def subscribe_to_status(self, f):
         messagebus.subscribe(self.localStatusTopic, f)
 
     def close(self):
@@ -276,7 +275,8 @@ class Connection:
         except Exception:
             pass
         try:
-            del connections[self.server + ":" + str(self.port) + self.connectionID]
+            del connections[self.server + ":" +
+                            str(self.port) + self.connection_id]
         except Exception:
             pass
 
@@ -322,11 +322,12 @@ class Connection:
 
             # We could not find even a single subscriber function
             # So we unsubscribe at the MQTT level
-            logging.debug("MQTT Unsubscribe from " + topic + " at " + self.server)
+            logging.debug("MQTT Unsubscribe from " +
+                          topic + " at " + self.server)
             if self.connection:
                 self.connection.unsubscribe(topic)
 
-    def configureAlert(self, *a):
+    def configure_alert(self, *a):
         pass
 
     def _mqttSubscribe(topic, qos):
@@ -384,7 +385,7 @@ class Connection:
 
             def wrapper(t, m):
                 # Get rid of the extra kaithem framing part of the topic
-                t = t[len(self.busPrefix + "/in/") :]
+                t = t[len(self.busPrefix + "/in/"):]
                 if not isinstance(m, str):
                     m = m.decode("utf-8")
                 try:
@@ -397,14 +398,14 @@ class Connection:
 
             def wrapper(t, m):
                 # Get rid of the extra kaithem framing part of the topic
-                t = t[len(self.busPrefix + "/in/") :]
+                t = t[len(self.busPrefix + "/in/"):]
                 function()(t, msgpack.unpackb(m, raw=False))
 
         elif encoding == "utf8":
 
             def wrapper(t, m):
                 # Get rid of the extra kaithem framing part of the topic
-                t = t[len(self.busPrefix + "/in/") :]
+                t = t[len(self.busPrefix + "/in/"):]
                 if not isinstance(m, str):
                     m = m.decode("utf-8")
                 function()(t, m)
@@ -413,7 +414,7 @@ class Connection:
 
             def wrapper(t, m):
                 # Get rid of the extra kaithem framing part of the topic
-                t = t[len(self.busPrefix + "/in/") :]
+                t = t[len(self.busPrefix + "/in/"):]
                 function()(t, m)
 
         else:
@@ -448,20 +449,20 @@ class Connection:
             pass
         else:
             raise ValueError("Invalid encoding!")
-        messagebus.postMessage(
+        messagebus.post_message(
             self.busPrefix + "/out/" + topic, message, annotation=(qos, retain)
         )
 
 
-def getConnection(
+def get_connection(
     server,
     port=1883,
     password=None,
-    messageBusName=None,
+    message_bus_name=None,
     *,
-    alertPriority="info",
-    alertAck=True,
-    connectionID=""
+    alert_priority="info",
+    alert_ack=True,
+    connection_id=""
 ):
     # Kaithem is gonna monkeypatch kaithem with one that has better
     # logging
@@ -472,22 +473,22 @@ def getConnection(
     with lock:
         x = None
 
-        connectionIDSuffix = ""
-        if connectionID:
-            connectionIDSuffix = "?" + connectionID
+        connection_idSuffix = ""
+        if connection_id:
+            connection_idSuffix = "?" + connection_id
 
-        if server + ":" + str(port) + connectionIDSuffix in connections:
-            x = connections[server + ":" + str(port) + connectionIDSuffix]()
+        if server + ":" + str(port) + connection_idSuffix in connections:
+            x = connections[server + ":" + str(port) + connection_idSuffix]()
 
         if x:
-            if not messageBusName == x.messageBusName:
+            if not message_bus_name == x.message_bus_name:
                 # We can safely use the existing one.   If t
                 logging.warning(
                     "Using connection that already exists, but with a different message bus name:  "
-                    + x.messageBusName
+                    + x.message_bus_name
                 )
 
-                messageBusName = x.messageBusName
+                message_bus_name = x.message_bus_name
 
             if x.password or password:
                 if not x.password == password:
@@ -495,15 +496,15 @@ def getConnection(
                         "There is already a connection to the same host and user, but with a different password."
                     )
 
-            x.configureAlert(alertPriority, alertAck)
+            x.configure_alert(alert_priority, alert_ack)
             return x
 
         return Connection(
             server,
             port,
             password=password,
-            alertAck=True,
-            alertPriority="info",
-            messageBusName=messageBusName,
-            connectionID=connectionID,
+            alert_ack=True,
+            alert_priority="info",
+            message_bus_name=message_bus_name,
+            connection_id=connection_id,
         )

@@ -1,23 +1,15 @@
-import threading, os, weakref
+from __future__ import annotations
+import time
+import sys
+import functools
+import base64
+import os
+import threading
+import weakref
 from .jsonrpyc import RPC
 from subprocess import PIPE, STDOUT
 from subprocess import Popen
 from . import workers
-
-
-def stop_allJackUsers():
-    # No longer needed, occasional subprocess segfaults stay contained
-    pass
-
-
-import os
-
-import base64
-
-import functools
-import sys
-import os
-import time
 
 
 @functools.cache
@@ -52,19 +44,25 @@ def which(program):
 
 # Can't pass GST elements, have to pass IDs
 class eprox:
-    def __init__(self, parent, id) -> None:
+    def __init__(self, parent: GstreamerPipeline, obj_id) -> None:
         # This was making a bad GC loop issue.
         self.parent = weakref.ref(parent)
-        self.id = id
+        self.id = obj_id
 
     def set_property(self, p, v, maxWait=10):
-        self.parent().setProperty(self.id, p, v, maxWait=maxWait)
+        x = self.parent()
+        assert x
+        x.set_property(self.id, p, v, maxWait=maxWait)
 
-    def pullBuffer(self, timeout=0.1):
-        return base64.b64decode(self.parent().pullBuffer(self.id, timeout))
+    def pull_buffer(self, timeout=0.1):
+        x = self.parent()
+        assert x
+        return base64.b64decode(x.pull_buffer(self.id, timeout))
 
-    def pullToFile(self, f):
-        return self.parent().pullToFile(self.id, f)
+    def pull_to_file(self, f):
+        x = self.parent()
+        assert x
+        return x.pull_to_file(self.id, f)
 
 
 pipes = weakref.WeakValueDictionary()
@@ -86,13 +84,13 @@ class GStreamerPipeline:
 
         return f
 
-    def pullToFile(self, *a, **k):
+    def pull_to_file(self, *a, **k):
         if self.ended or not self.worker.poll() is None:
             raise RuntimeError("This process is already dead")
 
         try:
             return self.rpc.call(
-                "pullToFile", args=a, kwargs=k, block=0.001, timeout=0.5
+                "pull_to_file", args=a, kwargs=k, block=0.001, timeout=0.5
             )
         except Exception:
             self.worker.terminate()
@@ -105,7 +103,8 @@ class GStreamerPipeline:
         self.worker.kill()
         workers.do(self.worker.wait)
 
-    def addElement(self, *a, **k):
+    def add_element(self, element_name: str, *a, **k):
+        "Returns an element proxy object"
         # This has to do with setup and I suppose we probably shouldn't just let the error pass by.
         if self.ended or not self.worker.poll() is None:
             raise RuntimeError("This process is already dead")
@@ -121,11 +120,11 @@ class GStreamerPipeline:
         return eprox(
             self,
             self.rpc.call(
-                "addElementRemote", args=a, kwargs=k, block=0.0001, timeout=5
+                "add_elementRemote", args=(element_name, *a), kwargs=k, block=0.0001, timeout=5
             ),
         )
 
-    def setProperty(self, *a, maxWait=10, **k):
+    def set_property(self, *a, maxWait=10, **k):
         # Probably Just Not Important enough to raise an error for this.
         if self.ended or not self.worker.poll() is None:
             print("Prop set in dead process")
@@ -138,11 +137,11 @@ class GStreamerPipeline:
         return eprox(
             self,
             self.rpc.call(
-                "setProperty", args=a, kwargs=k, block=0.0001, timeout=maxWait
+                "set_property", args=a, kwargs=k, block=0.0001, timeout=maxWait
             ),
         )
 
-    def addPILCapture(self, *a, **k):
+    def add_pil_capture(self, *a, **k):
         # Probably Just Not Important enough to raise an error for this.
         if self.ended or not self.worker.poll() is None:
             print("Prop set in dead process")
@@ -155,22 +154,22 @@ class GStreamerPipeline:
             ),
         )
 
-    def onAppsinkData(self, elementName, data, *a, **k):
+    def on_appsink_data(self, elementName, data, *a, **k):
         return
 
-    def _onAppsinkData(self, elementName, data):
-        self.onAppsinkData(elementName, base64.b64decode(data))
+    def _on_appsink_data(self, elementName, data):
+        self.on_appsink_data(elementName, base64.b64decode(data))
 
-    def onMotionBegin(self, *a, **k):
+    def on_motion_begin(self, *a, **k):
         print("Motion start")
 
-    def onMotionEnd(self, *a, **k):
+    def on_motion_end(self, *a, **k):
         print("Motion end")
 
-    def onMultiFileSinkFile(self, fn, *a, **k):
+    def on_multi_file_sink_file(self, fn, *a, **k):
         print("MultiFileSink", fn)
 
-    def onBarcode(self, type, data):
+    def on_barcode(self, type, data):
         print("Barcode: ", type, data)
 
     def stop(self):
@@ -195,11 +194,10 @@ class GStreamerPipeline:
             time.sleep(0.5)
             self.worker.kill()
             workers.do(self.worker.wait)
-            
 
-    def addJackMixerSendElements(self, *a, **k):
+    def add_jack_mixer_send_elements(self, *a, **k):
         a, b = self.rpc.call(
-            "addJackMixerSendElements", args=a, kwargs=k, block=0.0001, timeout=10
+            "add_jack_mixer_send_elements", args=a, kwargs=k, block=0.0001, timeout=10
         )
         return (eprox(self, a), eprox(self, b))
 
@@ -218,7 +216,7 @@ class GStreamerPipeline:
         self.lock = threading.RLock()
         env = {}
         env.update(os.environ)
-        env["GST_DEBUG"] = "*:1"
+        env["GST_DEBUG"] = "*:3"
 
         self.rpc = None
         if which("kaithem._iceflow_server") and False:
@@ -244,7 +242,7 @@ class GStreamerPipeline:
     def print(self, s):
         print(s)
 
-    def onPresenceValue(self, v):
+    def on_presence_value(self, v):
         print(v)
 
 

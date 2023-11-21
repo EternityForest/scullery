@@ -36,7 +36,7 @@ def subscriber(topic,val):
 scullery.messagebus.subscribe("/test/topic",subscriber)
 
 #Post a message, the actual subscribers all run in the background worker pool
-scullery.messagebus.postMessage("/test/topic","TestPayload")
+scullery.messagebus.post_message("/test/topic","TestPayload")
 
 import time
 
@@ -100,14 +100,14 @@ This submodule requires pyjack, and of course Jack.
 ##### system/jack/started
 When jack is started or restarted
 
-#### sullery.jack.startManaging()
+#### sullery.jack.start_managing()
 Start the worker thread and enable management functions
 
 #### scullery.jack.Airwire(from,to)
 Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.
 If you try to connect a client to a single port, all outputs get mixed down. Likewise a port to a client duplicates to all inputs.
 
-They start in the disconnected state.
+They start in the dis_connected state.
 
 
 #### scullery.jack.Airwire.connect()
@@ -123,10 +123,10 @@ Disconnect.
 
 This module deals with MIDI synthesis
 
-### scullery.fluidsynth.FluidSynth(self, soundfont=None,jackClientName=None)
+### scullery.fluidsynth.FluidSynth(self, soundfont=None,jack_client_name=None)
 
 Creates an instance of the FluidSynth soundfont synthesizer. Soundfont is an file path, or it defaults
-to one that sometimes ships with fluidsynth. if jackClientName is provided, outputs audio via JACK.
+to one that sometimes ships with fluidsynth. if jack_client_name is provided, outputs audio via JACK.
 
 You don't have to worry about cleanup, that happens automatically on GC.
 
@@ -142,7 +142,7 @@ Set the instrumemt. If instrument is str, we will use the closest match we can f
 ### scullery.iceflow.GStreamerPipeline
 This is the base class for making GStreamer apps
 
-#### addElement(elementType, name=None, connectToOutput=None,**kwargs)
+#### add_element(elementType, name=None, connectToOutput=None,**kwargs)
 
 Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
 element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a suitable pad
@@ -150,13 +150,13 @@ on that is available.
 
 The `**kwargs` are used to set properties of the element.
 
-#### addPILCapture(resolution, connectToOutput=None,buffer=1)
+#### add_pil_capture(resolution, connectToOutput=None,buffer=1)
 Adds a PILCapture object which acts like a video sink. It will buffer the most recent N frames, discarding as needed.
 
 ##### PILCapture.pull()
 Return a video frame as a PIL/Pillow Image. May return None on empty buffers.
 
-#### setProperty(element, property, value)
+#### set_property(element, property, value)
 Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
 valid files that exist.
 

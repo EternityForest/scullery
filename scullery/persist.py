@@ -23,7 +23,7 @@ if sys.platform.startswith('darwin'):
 # Purely just a dict for the rest of the application to keep track of what files are changed and not saved.
 unsavedFiles = {}
 
-def resolvePath(fn,expand=True):
+def resolve_path(fn,expand=True):
     if not expand:
         return fn
     return (os.path.expandvars(os.path.expanduser(fn)))
@@ -102,7 +102,7 @@ def save(data,fn, *,private=False,backup=True, expand=True, md5=False,nolog=Fals
             backup:
                 Setting this to true is an alias for mode="backup"
     """
-    fn = resolvePath(fn, expand)
+    fn = resolve_path(fn, expand)
     with lock:
 
         #Make sure we don't overwrite a file when we create our dirs, because that behavior is undocumented in makedirs.
@@ -216,7 +216,7 @@ def load(filename, *,expand=True):
     After that may be a .bz2 or a .gz for compression.
 
     """
-    filename = resolvePath(filename, expand)
+    filename = resolve_path(filename, expand)
 
     with lock:
         try:

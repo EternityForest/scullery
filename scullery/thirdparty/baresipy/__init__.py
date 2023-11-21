@@ -1,36 +1,39 @@
 from time import sleep
-import pexpect,re,traceback,shutil
+import pexpect
+import re
+import traceback
+import shutil
 from os.path import join, expanduser
 import tempfile
 import logging
 import subprocess
 from threading import Thread
-from  .utils import create_daemon
+from .utils import create_daemon
 from .utils.log import LOG
 import os
 import shutil
 
-    
-        # evt = re.search(r"received event\: *?\'(.*?)\'", line)
-        
-        # if evt:
-        #     self.onDTMF(evt.groups(0))
-            
+# evt = re.search(r"received event\: *?\'(.*?)\'", line)
+
+# if evt:
+#     self.onDTMF(evt.groups(0))
+
 
 logging.getLogger("urllib3.connectionpool").setLevel("WARN")
 logging.getLogger("pydub.converter").setLevel("WARN")
 
 tmpdir = "/dev/shm/"
 
+
 class BareSIP(Thread):
-    def __init__(self, user, pwd, gateway, tts=None, debug=False, block=True, audiodriver="alsa,default",port=5060):
+    def __init__(self, user, pwd, gateway, tts=None, debug=False, block=True, audiodriver="alsa,default", port=5060):
         self.debug = debug
         self.user = user
         self.pwd = pwd
         self.gateway = gateway
 
-        #Learn the second one when it has to reasign a unique name
-        #There is an in and an out client name
+        # Learn the second one when it has to reasign a unique name
+        # There is an in and an out client name
         self.jackNames = ['baresip']
 
         if tts:
@@ -40,13 +43,14 @@ class BareSIP(Thread):
                 from responsive_voice import ResponsiveVoice
                 self.tts = ResponsiveVoice(gender=ResponsiveVoice.MALE)
             except ImportError:
-                logging.exception("No responsive_voice module, some features will not work")
+                logging.exception(
+                    "No responsive_voice module, some features will not work")
         self._login = "sip:{u}:{p}@{g}".format(u=self.user, p=self.pwd,
                                                g=self.gateway)
         self._prev_output = ""
         self.running = False
 
-        #Ready immediately, this is a localhost thing
+        # Ready immediately, this is a localhost thing
         self.ready = True
         self.mic_muted = False
         self.abort = False
@@ -55,45 +59,43 @@ class BareSIP(Thread):
         self.audio = None
         self._ts = None
 
-        self.jack_port="baresip"
+        self.jack_port = "baresip"
 
-         
         cnfdir = os.path.join(tmpdir, "ScullerySIP"+str(port))
-        self.cnfdir=cnfdir
+        self.cnfdir = cnfdir
         try:
-            #Remove any existing
+            # Remove any existing
             shutil.rmtree(self.cnfdir)
         except:
             pass
-
 
         if not os.path.exists(os.path.join(tmpdir, "ScullerySIP"+str(port))):
             os.mkdir(os.path.join(tmpdir, "ScullerySIP"+str(port)))
 
         self.cnfdir = cnfdir
-        #Using the template, create a configuration dir for
-        #the baresip instance we are about to make.
-        f = os.path.join(os.path.dirname(__file__),"baresip_template")
-        
-        drivers="module\t\talsa.so"
+        # Using the template, create a configuration dir for
+        # the baresip instance we are about to make.
+        f = os.path.join(os.path.dirname(__file__), "baresip_template")
+
+        drivers = "module\t\talsa.so"
         if 'jack' in audiodriver:
             drivers = "module\t\tjack.so"
 
         for i in os.listdir(f):
-            with open(os.path.join(f,i)) as fd:
-                x  = fd.read()
-                
-            x=x.replace("USERNAME", user)
-            x=x.replace("AUDIODRIVER", audiodriver)
-            x=x.replace("PORT", str(port))
-            x=x.replace("DRIVERS", str(drivers))
+            with open(os.path.join(f, i)) as fd:
+                x = fd.read()
 
-            with open(os.path.join(cnfdir,i),"w") as fd:
+            x = x.replace("USERNAME", user)
+            x = x.replace("AUDIODRIVER", audiodriver)
+            x = x.replace("PORT", str(port))
+            x = x.replace("DRIVERS", str(drivers))
+
+            with open(os.path.join(cnfdir, i), "w") as fd:
                 fd.write(x)
 
-        self.baresip = pexpect.spawn('baresip',["-f",cnfdir])
+        self.baresip = pexpect.spawn('baresip', ["-f", cnfdir])
         super().__init__()
-        self.daemon=True
+        self.daemon = True
 
         self.start()
         if block:
@@ -106,7 +108,7 @@ class BareSIP(Thread):
 
     @property
     def call_status(self):
-        return self._call_status or "DISCONNECTED"
+        return self._call_status or "Dis_connected"
 
     # actions
     def do_command(self, action):
@@ -335,15 +337,15 @@ class BareSIP(Thread):
         if error == "failed to set audio-source (No such device)":
             self.handle_audio_stream_failure()
 
-    def onJackAssigned(self,cname):
+    def onJackAssigned(self, cname):
         if not cname in self.jackNames:
             self.jackNames.append(cname)
-            #We only have 2, if there are more, 
-            #it means the default has been reassigned
-            if len(self.jackNames)>2:
+            # We only have 2, if there are more,
+            # it means the default has been reassigned
+            if len(self.jackNames) > 2:
                 self.jackNames.pop(0)
 
-    def on_audio_rtp(self,rtp):
+    def on_audio_rtp(self, rtp):
         pass
 
     # event loop
@@ -364,7 +366,7 @@ class BareSIP(Thread):
                     elif "All 1 useragent registered successfully!" in out:
                         self.ready = True
                         self.handle_login_success()
-                   
+
                     elif "ua: SIP register failed:" in out or\
                             "401 Unauthorized" in out or \
                             "Register: Destination address required" in out or\
@@ -378,7 +380,8 @@ class BareSIP(Thread):
                         self._call_status = "INCOMING"
                         self.handle_incoming_call(num)
                     elif "call: rejecting incoming call from " in out:
-                        num = out.split("rejecting incoming call from ")[1].split(" ")[0].strip()
+                        num = out.split("rejecting incoming call from ")[
+                            1].split(" ")[0].strip()
                         self.handle_call_rejected(num)
                     elif "call: SIP Progress: 180 Ringing" in out:
                         self.handle_call_ringing()
@@ -406,7 +409,7 @@ class BareSIP(Thread):
                         self._call_status = status
                     elif "Call with " in out and \
                             "terminated (duration: " in out:
-                        status = "DISCONNECTED"
+                        status = "Dis_connected"
                         duration = out.split("terminated (duration: ")[1][:-1]
                         self.handle_call_status(status)
                         self._call_status = status
@@ -420,17 +423,18 @@ class BareSIP(Thread):
                         self.handle_mic_unmuted()
                     elif "session closed:" in out:
                         reason = out.split("session closed:")[1].strip()
-                        status = "DISCONNECTED"
+                        status = "Dis_connected"
                         self.handle_call_status(status)
                         self._call_status = status
                         self.handle_call_ended(reason)
                         self.mic_muted = False
                     elif "(no active calls)" in out:
-                        status = "DISCONNECTED"
+                        status = "Dis_connected"
                         self.handle_call_status(status)
                         self._call_status = status
                     elif "incoming rtp for 'audio' established, receiving from " in out:
-                        rtp = out.split("stream: incoming rtp for 'audio' established, receiving from ")
+                        rtp = out.split(
+                            "stream: incoming rtp for 'audio' established, receiving from ")
                         self.on_audio_rtp(rtp)
 
                     elif "===== Call debug " in out:
@@ -438,11 +442,12 @@ class BareSIP(Thread):
                         self.handle_call_status(status)
                         self._call_status = status
 
-                    elif 'jack' in out: 
-                        match = re.search(r"jack: unique name \`(.*?)\' assigned", out)
+                    elif 'jack' in out:
+                        match = re.search(
+                            r"jack: unique name \`(.*?)\' assigned", out)
                         if match:
                             self.onJackAssigned(match.groups(1)[0])
-                    
+
                     elif "--- List of active calls (1): ---" in \
                             self._prev_output:
                         if "ESTABLISHED" in out and self.current_call in out:
@@ -451,7 +456,7 @@ class BareSIP(Thread):
                             if ts != self._ts:
                                 self._ts = ts
                                 self.handle_call_timestamp(ts)
-                
+
                     elif "failed to set audio-source (No such device)" in out:
                         error = "failed to set audio-source (No such device)"
                         self.handle_error(error)
@@ -471,4 +476,3 @@ class BareSIP(Thread):
             sleep(0.1)
             if self.abort:
                 return
-

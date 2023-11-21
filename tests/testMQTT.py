@@ -1,44 +1,47 @@
 import unittest
 import time
-import scullery.mqtt 
+import scullery.mqtt
 import gc
+
 
 class VirtualServer(unittest.TestCase):
     def test_loop(self):
         d = [0]
+
         def p(*x):
             print("Got MQTT response:"+str([x]))
-            d[0]+=1
-        
+            d[0] += 1
+
         scullery.mqtt.testCrashOnce = True
-        c = scullery.mqtt.getConnection("localhost",1883,messageBusName="testBusName")
-        
+        c = scullery.mqtt.get_connection(
+            "localhost", 1883, message_bus_name="testBusName")
+
         time.sleep(0.2)
         c.subscribe("test", p)
-        
-        c.publish("test","someData")
-        
+
+        c.publish("test", "someData")
+
         time.sleep(1)
-        
+
         self.assertEqual(d[0], 1)
 
+        # Passive connection, all it does is act as a wrapper around the internal message bus, all real MQTT traffic is through
+        # the real connection we made above.
+        c2 = scullery.mqtt.get_connection("", message_bus_name='testBusName')
 
-        #Passive connection, all it does is act as a wrapper around the internal message bus, all real MQTT traffic is through
-        #the real connection we made above.
-        c2 = scullery.mqtt.getConnection("",messageBusName='testBusName')
+        d2 = [0]
 
-        d2=[0]
         def p2(*x):
             print("Got MQTT response2:"+str([x]))
-            d2[0]+=1
-                
+            d2[0] += 1
+
         time.sleep(0.2)
         c2.subscribe("test", p2)
-        
-        c2.publish("test","someData2")
-        
+
+        c2.publish("test", "someData2")
+
         time.sleep(0.2)
-        
+
         self.assertEqual(d2[0], 1)
 
         c2.close()
@@ -49,19 +52,20 @@ class VirtualServer(unittest.TestCase):
         gc.collect()
         gc.collect()
 
-        #Recreate the connection, all subscribers carry over
-        c = scullery.mqtt.getConnection("localhost",1883,messageBusName="testBusName")
+        # Recreate the connection, all subscribers carry over
+        c = scullery.mqtt.get_connection(
+            "localhost", 1883, message_bus_name="testBusName")
         time.sleep(1)
-        c.publish("test","someData2")
+        c.publish("test", "someData2")
         time.sleep(0.2)
         self.assertEqual(d2[0], 2)
 
-        #Delete the functions. Scullery only weakly references them, so they should just be gone.
+        # Delete the functions. Scullery only weakly references them, so they should just be gone.
         del p
         del p2
         gc.collect()
         gc.collect()
 
-        c.publish("test","someData2")
+        c.publish("test", "someData2")
         time.sleep(0.2)
         self.assertEqual(d2[0], 2)

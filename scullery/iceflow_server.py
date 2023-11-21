@@ -37,7 +37,7 @@ lock = threading.RLock()
 Gst = None
 jackChannels = {}
 
-stopflag =[0]
+stopflag = [0]
 
 # Overridden later
 print = print
@@ -45,15 +45,8 @@ print = print
 rpc = [None]
 
 
-def tryToAvoidSegfaults(t, v):
-    if v.clientName == "system":
-        stop_allJackUsers()
-
-
-
-
 # https://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid-in-python
-def check_pid(pid):
+def check_pid(pid: int):
     """ Check For the existence of a unix pid. """
     try:
         os.kill(pid, 0)
@@ -63,7 +56,6 @@ def check_pid(pid):
         return True
 
 
-#messagebus.subscribe("/system/jack/delport", tryToAvoidSegfaults)
 pipes = weakref.WeakValueDictionary()
 
 log = logging.getLogger("IceFlow_gst")
@@ -75,6 +67,7 @@ try:
     from . import jsonrpyc
 except ImportError:
     import jsonrpyc
+
 
 class PresenceDetectorRegion():
     def __init__(self):
@@ -160,7 +153,7 @@ class PresenceDetector():
             # Crop region is specified as a fraction, convert to pixels and points instead of fraction y,x,w,h
             i2 = x.crop((int(m[0] * w),
                          int(m[1] * h),
-                        int(m[0] * w) + int(m[2] * w), 
+                        int(m[0] * w) + int(m[2] * w),
                         int(m[1] * h) + int(m[3] * h))
                         )
             r[i] = self.regions[i].poll(i2)
@@ -174,7 +167,7 @@ class PILCapture():
         self.img = Image
         self.appsink = appsink
 
-    def pullToFile(self, f, timeout=0.1):
+    def pull_to_file(self, f, timeout=0.1):
         x = self.pull(timeout, True)
         if not x:
             return None
@@ -284,27 +277,6 @@ def link(a, b):
             pass  # b.unref()
 
 
-def stop_allJackUsers():
-    # It seems best to stop everything using jack before stopping and starting the daemon.
-    with lock:
-        c = list(jackChannels.items())
-        for i in c:
-            # Sync stop, we gotta wait
-            try:
-                i[1]().syncStop = True
-                i[1]().stop()
-            except Exception:
-                log.exception("Err stopping JACK user")
-        del c
-        # Defensive programming against a double stop, which might be something that
-        # No longer is in a state that can be touched without a segfault
-        try:
-            for i in jackChannels:
-                del jackChannels[i]
-        except Exception:
-            pass
-
-
 def elementInfo(e):
     r = Gst.Registry.get()
 
@@ -345,9 +317,9 @@ def init():
             Gst = gst
             Gst.init(None)
 
-            #mainContext = GLib.MainContext()
+            # mainContext = GLib.MainContext()
 
-            #glibloop = GLib.MainLoop()
+            # glibloop = GLib.MainLoop()
 
             # loop=threading.Thread(target=glibloop.run,daemon=True)
             # loop.start()
@@ -599,13 +571,13 @@ class GStreamerPipeline():
             x = self._pilmotiondetector.poll()
             if x is None:
                 return
-            rpc[0]("onPresenceValue", [x])
+            rpc[0]("on_presence_value", [x])
 
     def addPresenceDetector(self, resolution, connectToOutput=None, regions=None):
         if self._pilmotiondetector:
             raise RuntimeError("Already have one of these")
 
-        self._pilmotiondetectorcapture = self.addPILCapture(
+        self._pilmotiondetectorcapture = self.add_pil_capture(
             resolution, connectToOutput, method=0)
         self._pilmotiondetector = PresenceDetector(
             self._pilmotiondetectorcapture, regions)
@@ -762,7 +734,7 @@ class GStreamerPipeline():
     #     sample = appsink.emit("pull-sample")
     #     gst_buffer = sample.get_buffer()
     #     (ret, buffer_map) = gst_buffer.map(Gst.MapFlags.READ)
-    #     rpc[0]("_onAppsinkData", [str(user_data), base64.b64encode(buffer_map.data).decode()])
+    #     rpc[0]("_on_appsink_data", [str(user_data), base64.b64encode(buffer_map.data).decode()])
     #     return Gst.FlowReturn.OK
 
     def onMessage(self, src, name, s):
@@ -773,16 +745,16 @@ class GStreamerPipeline():
 
         elif s.get_name() == 'motion':
             if s.has_field("motion_begin"):
-                rpc[0]("onMotionBegin", [])
+                rpc[0]("on_motion_begin", [])
             if s.has_field("motion_finished"):
-                rpc[0]("onMotionEnd", [])
+                rpc[0]("on_motion_end", [])
 
         elif s.get_name() == 'GstVideoAnalyse':
             rpc[0]("onVideoAnalyze", [{'luma-average': s.get_double('luma-average')[
-                   1], 'luma-variance':s.get_double('luma-variance')[1]}])
+                   1], 'luma-variance': s.get_double('luma-variance')[1]}])
 
         elif s.get_name() == 'barcode':
-            rpc[0]("onBarcode", [s.get_string("type"),
+            rpc[0]("on_barcode", [s.get_string("type"),
                    s.get_string("symbol"), s.get_int("quality")[1]])
 
         elif s.get_name() == 'GstMultiFileSink':
@@ -1022,18 +994,19 @@ class GStreamerPipeline():
 
                     self._stopped = True
         finally:
-           stopflag[0]=1
+            stopflag[0] = 1
 
-    def addPILCapture(self, resolution=None, connectToOutput=None, buffer=1, method=1):
+    def add_pil_capture(self, resolution=None, connectToOutput=None, buffer=1, method=1):
         "Return a video capture object.  Now that we use BG threads this is just used to save snapshots to file"
         if resolution:
-            scale = self.addElement("videoscale", method=method)
-            caps = self.addElement("capsfilter", caps="video/x-raw,width=" +
-                                   str(resolution[0]) + ",height=" + str(resolution[0]))
-        conv = self.addElement("videoconvert", connectToOutput=connectToOutput)
-        caps = self.addElement("capsfilter", caps="video/x-raw,format=RGB")
+            scale = self.add_element("videoscale", method=method)
+            caps = self.add_element("capsfilter", caps="video/x-raw,width=" +
+                                    str(resolution[0]) + ",height=" + str(resolution[0]))
+        conv = self.add_element(
+            "videoconvert", connectToOutput=connectToOutput)
+        caps = self.add_element("capsfilter", caps="video/x-raw,format=RGB")
 
-        appsink = self.addElement(
+        appsink = self.add_element(
             "appsink", drop=True, sync=False, max_buffers=buffer)
 
         p = PILCapture(appsink)
@@ -1042,15 +1015,15 @@ class GStreamerPipeline():
         return p
 
     def addRemotePILCapture(self, *a, **k):
-        return id(self.addPILCapture(*a, **k))
+        return id(self.add_pil_capture(*a, **k))
 
     def addPILSource(self, resolution, buffer=1, greyscale=False):
         "Return a video source object that we can use to put PIL buffers into the stream"
 
-        appsrc = self.addElement("appsrc", caps="video/x-raw,width=" + str(resolution[0]) + ",height=" + str(
+        appsrc = self.add_element("appsrc", caps="video/x-raw,width=" + str(resolution[0]) + ",height=" + str(
             resolution[0]) + ", format=" + "GREy8" if greyscale else "RGB", connectToOutput=False)
-        conv = self.addElement("videoconvert")
-        scale = self.addElement("videoscale")
+        conv = self.add_element("videoconvert")
+        scale = self.add_element("videoscale")
 
         # Start with a blck image to make things prerooll
         if (greyscale):
@@ -1065,7 +1038,7 @@ class GStreamerPipeline():
     def addAppSink(self, connectToOutput=None, buffer=1):
         "Return a video capture object"
 
-        appsink = self.addElement(
+        appsink = self.add_element(
             "appsink", drop=True, sync=False, max_buffers=buffer)
 
         return AppSink(appsink)
@@ -1073,10 +1046,10 @@ class GStreamerPipeline():
     def addAppSrc(self, connectToOutput=None, buffer=1, caps=''):
         "Return a video capture object"
 
-        appsrc = self.addElement("appsrc", caps=caps, connectToOutput=False)
+        appsrc = self.add_element("appsrc", caps=caps, connectToOutput=False)
         return AppSource(appsrc)
 
-    def pullBuffer(self, element, timeout=0.1):
+    def pull_buffer(self, element, timeout=0.1):
         if isinstance(element, int):
             element = elementsByShortId[element]
 
@@ -1089,13 +1062,13 @@ class GStreamerPipeline():
 
         return base64.b64encode(buf.extract_dup(0, buf.get_size()))
 
-    def pullToFile(self, element, fn):
+    def pull_to_file(self, element, fn):
         if isinstance(element, int):
             element = elementsByShortId[element]
 
-        return element.pullToFile(fn)
+        return element.pull_to_file(fn)
 
-    def addElement(self, t, name=None, connectWhenAvailable=False, connectToOutput=None, sidechain=False, **kwargs):
+    def add_element(self, t, name=None, connectWhenAvailable=False, connectToOutput=None, sidechain=False, **kwargs):
 
         with self.lock:
             if not isinstance(t, str):
@@ -1114,7 +1087,7 @@ class GStreamerPipeline():
 
             for i in kwargs:
                 v = kwargs[i]
-                self.setProperty(e, i, v)
+                self.set_property(e, i, v)
 
             self.pipeline.add(e)
             op = []
@@ -1190,10 +1163,10 @@ class GStreamerPipeline():
                 jackChannels[self.uuid] = weakref.ref(self)
         return p
 
-    def addElementRemote(self, *a, **k):
-        return id(self.addElement(*a, **k))
+    def add_elementRemote(self, *a, **k):
+        return id(self.add_element(*a, **k))
 
-    def addJackMixerSendElements(self, target, idee, volume=-60):
+    def add_jack_mixer_send_elements(self, target, idee, volume=-60):
         with self.lock:
             if not isinstance(target, str):
                 raise ValueError("Target must be string")
@@ -1234,7 +1207,7 @@ class GStreamerPipeline():
 
             return id(l), id(e2)
 
-    def setProperty(self, element, prop, value):
+    def set_property(self, element, prop, value):
         with self.lock:
 
             if isinstance(element, int):
@@ -1250,7 +1223,7 @@ class GStreamerPipeline():
 
             if prop.startswith("_"):
                 prop = prop[1:]
-                
+
             prop = prop.replace("_", "-")
 
             prop = prop.split(":")
@@ -1268,7 +1241,7 @@ class GStreamerPipeline():
                 return True
             if self.pipeline.get_state(1000_000_000)[1] == Gst.State.PLAYING:
                 return True
-            
+
 
 gstp = None
 
@@ -1281,7 +1254,6 @@ def main():
     gstp = GStreamerPipeline()
     rpc[0] = jsonrpyc.RPC(target=gstp)
 
-
     # def print(*a):
     #     rpc[0]("print", [str(a)])
 
@@ -1293,6 +1265,7 @@ def main():
 
         if not os.getppid() == ppid:
             return
+
 
 if __name__ == '__main__':
     main()
