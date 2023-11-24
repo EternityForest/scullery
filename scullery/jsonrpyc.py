@@ -526,7 +526,7 @@ class Watchdog(threading.Thread):
         self.daemon = daemon
 
         # register a stop event
-        self._stop = threading.Event()
+        self._wd_stopper_evt = threading.Event()
 
         if start:
             self.start()
@@ -541,12 +541,12 @@ class Watchdog(threading.Thread):
         """
         Stops with thread's activity.
         """
-        self._stop.set()
+        self._wd_stopper_evt.set()
 
     def run(self):
         try:
             # reset the stop event
-            self._stop.clear()
+            self._wd_stopper_evt.clear()
 
             # stop here when stdin is not set or closed
             if not self.rpc().stdin or self.rpc().stdin.closed:
@@ -554,7 +554,7 @@ class Watchdog(threading.Thread):
 
             # read new incoming lines
             last_pos = 0
-            while not self._stop.is_set():
+            while not self._wd_stopper_evt.is_set():
                 rpc = self.rpc()
                 if not rpc:
                     return
@@ -605,7 +605,7 @@ class Watchdog(threading.Thread):
                         if line:
                             rpc._handle(line)
                 else:
-                    self._stop.wait(self.interval)
+                    self._wd_stopper_evt.wait(self.interval)
                 del rpc
         except Exception:
             print(traceback.format_exc())

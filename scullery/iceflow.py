@@ -77,9 +77,10 @@ class GStreamerPipeline:
             try:
                 return self.rpc.call(attr, args=a, kwargs=k, block=0.001, timeout=15)
             except Exception:
-                self.worker.terminate()
-                self.worker.kill()
-                workers.do(self.worker.wait)
+                if self.worker:
+                    self.worker.terminate()
+                    self.worker.kill()
+                    workers.do(self.worker.wait)
                 raise
 
         return f
@@ -93,9 +94,10 @@ class GStreamerPipeline:
                 "pull_to_file", args=a, kwargs=k, block=0.001, timeout=0.5
             )
         except Exception:
-            self.worker.terminate()
-            self.worker.kill()
-            workers.do(self.worker.wait)
+            if self.worker:
+                self.worker.terminate()
+                self.worker.kill()
+                workers.do(self.worker.wait)
             raise
 
     def __del__(self):
@@ -216,7 +218,7 @@ class GStreamerPipeline:
         self.lock = threading.RLock()
         env = {}
         env.update(os.environ)
-        env["GST_DEBUG"] = "*:3"
+        env["GST_DEBUG"] = "*:1"
 
         self.rpc = None
         if which("kaithem._iceflow_server") and False:

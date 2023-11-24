@@ -835,6 +835,12 @@ def start_managing(p=None, n=None):
 
 def stop_managing():
     with lock:
+
+        try:
+            if _jackclient:
+                _jackclient.exit()
+        except Exception:
+            pass
         # Stop the old thread if needed
         _reconnecterThreadObjectStopper[0] = 0
         try:

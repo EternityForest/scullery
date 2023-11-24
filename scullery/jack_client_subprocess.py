@@ -5,6 +5,8 @@ import traceback
 import time
 import re
 import jack
+import sys
+
 _didPatch = False
 
 # This is NixOS compatibility stuff, we could be running as an output from setup.py
@@ -67,9 +69,12 @@ def f():
 
 f()
 
+shouldExit = [0]
 
 # We can't ship port objects on the wire, we have to do this instead.
 # Anything that would normally take a port object must take a name instead.
+
+
 class JackClientProxy():
     def __getattr__(self, attr):
         def f(*a, **k):
@@ -78,6 +83,10 @@ class JackClientProxy():
                 x = portToInfo(x).toDict()
             return x
         return f
+
+    def exit(self, *a, **k):
+        shouldExit[0] = 1
+        sys.exit()
 
     def get_ports(self, *a, **k):
         x = self.clientObj.get_ports(*a, **k)
@@ -215,6 +224,8 @@ def main():
         if not check_pid(ppid):
             sys.exit()
         if not ppid == os.getppid():
+            sys.exit()
+        if shouldExit[0]:
             sys.exit()
 
 
