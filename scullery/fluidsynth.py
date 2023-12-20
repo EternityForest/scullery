@@ -146,7 +146,7 @@ def find_sound_font(specific=None, extra_fallback=None):
 class FluidSynth():
     defaultSoundfont = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
-    def __init__(self, soundfont=None, jack_client_name=None,
+    def __init__(self, soundfont=None, jack_client_name=None, gain=0.2,
                  connect_midi=None, connect_output=None, reverb=False, chorus=False, ondemand=True):
         players[id(self)] = self
 
@@ -163,7 +163,7 @@ class FluidSynth():
         from . thirdparty import fluidsynth
 
         def remake():
-            self.fs = fluidsynth.Synth()
+            self.fs = fluidsynth.Synth(gain=gain)
             self.fs.setting("synth.chorus.active", 1 if chorus else 0)
             self.fs.setting("synth.reverb.active", 1 if reverb else 0)
 

@@ -878,11 +878,10 @@ def _checkJackClient(err=True):
             postedCheck = False
 
             if firstConnect:
-                print(traceback.format_exc())
                 firstConnect = True
+            else:
+                print(traceback.format_exc())
 
-            print("Remaking client")
-            print(traceback.format_exc())
             try:
                 _jackclient.close()
                 _jackclient = None
