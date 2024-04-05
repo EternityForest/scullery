@@ -5,7 +5,6 @@ Minimal python RPC implementation in a single file based on the JSON-RPC 2.0 spe
 http://www.jsonrpc.org/specification.
 """
 
-
 __author__ = "Marcel Rieger"
 __email__ = "python-jsonrpyc@googlegroups.com"
 __copyright__ = "Copyright 2016-2021, Marcel Rieger"
@@ -16,7 +15,6 @@ __status__ = "Development"
 __version__ = "1.1.1"
 __all__ = ["RPC"]
 
-import logging
 import select
 
 import sys
@@ -58,7 +56,8 @@ class Spec(object):
         """
         if (id is not None or not allow_empty) and not isinstance(id, (int, str)):
             raise TypeError(
-                "id must be an integer or string, got {} ({})".format(id, type(id)))
+                "id must be an integer or string, got {} ({})".format(id, type(id))
+            )
 
     @classmethod
     def check_method(cls, method):
@@ -67,7 +66,8 @@ class Spec(object):
         """
         if not isinstance(method, str):
             raise TypeError(
-                "method must be a string, got {} ({})".format(method, type(method)))
+                "method must be a string, got {} ({})".format(method, type(method))
+            )
 
     @classmethod
     def check_code(cls, code):
@@ -76,12 +76,10 @@ class Spec(object):
         *KeyError* when there is no :py:class:`RPCError` subclass registered for that *code*.
         """
         if not isinstance(code, int):
-            raise TypeError(
-                "code must be an integer, got {} ({})".format(id, type(id)))
+            raise TypeError("code must be an integer, got {} ({})".format(id, type(id)))
 
         if not get_error(code):
-            raise ValueError(
-                "unknown code, got {} ({})".format(code, type(code)))
+            raise ValueError("unknown code, got {} ({})".format(code, type(code)))
 
     @classmethod
     def request(cls, method, id=None, params=None):
@@ -97,19 +95,19 @@ class Spec(object):
             raise RPCInvalidRequest(str(e))
 
         # start building the request string
-        req = "{{\"jsonrpc\":\"2.0\",\"method\":\"{}\"".format(method)
+        req = '{{"jsonrpc":"2.0","method":"{}"'.format(method)
 
         # add the id when given
         if id is not None:
             # encode string ids
             if isinstance(id, str):
                 id = json.dumps(id)
-            req += ",\"id\":{}".format(id)
+            req += ',"id":{}'.format(id)
 
         # add parameters when given
         if params is not None:
             try:
-                req += ",\"params\":{}".format(json.dumps(params))
+                req += ',"params":{}'.format(json.dumps(params))
             except Exception as e:
                 raise RPCParseError(str(e))
 
@@ -135,8 +133,9 @@ class Spec(object):
 
         # build the response string
         try:
-            res = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{}}}".format(
-                id, json.dumps(result))
+            res = '{{"jsonrpc":"2.0","id":{},"result":{}}}'.format(
+                id, json.dumps(result)
+            )
         except Exception as e:
             raise RPCParseError(str(e))
 
@@ -157,13 +156,16 @@ class Spec(object):
 
         # build the inner error data
         message = get_error(code).title
-        err_data = "{{\"code\":{},\"message\":\"{}\"".format(
-            code, message).replace("\n", '').replace("\r", '')
+        err_data = (
+            '{{"code":{},"message":"{}"'.format(code, message)
+            .replace("\n", "")
+            .replace("\r", "")
+        )
 
         # insert data when given
         if data is not None:
             try:
-                err_data += ",\"data\":{}}}".format(json.dumps(data))
+                err_data += ',"data":{}}}'.format(json.dumps(data))
             except Exception as e:
                 raise RPCParseError(str(e))
         else:
@@ -174,8 +176,7 @@ class Spec(object):
             id = json.dumps(id)
 
         # start building the error string
-        err = "{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{}}}".format(
-            id, err_data)
+        err = '{{"jsonrpc":"2.0","id":{},"error":{}}}'.format(id, err_data)
 
         return err
 
@@ -306,7 +307,7 @@ class RPC(object):
         """
         return self.call(*args, **kwargs)
 
-    def call(self, method, args=(), kwargs=None, callback=None, block=0, timeout=60):
+    def call(self, method, args=(), kwargs=None, callback=None, block=0.0, timeout=60):
         """
         Performs an actual remote procedure call by writing a request representation (a string) to
         the output stream. The remote RPC instance uses *method* to route to the actual method to
@@ -348,7 +349,6 @@ class RPC(object):
 
         # blocking return value behavior
         if block > 0:
-
             while True:
                 if self._results[id] != self.EMPTY_RESULT:
                     result = self._results[id]
@@ -404,8 +404,7 @@ class RPC(object):
                 if isinstance(e, RPCError):
                     err = Spec.error(req["id"], e.code, e.data)
                 else:
-                    err = Spec.error(req["id"], -32603,
-                                     str(traceback.format_exc()))
+                    err = Spec.error(req["id"], -32603, str(traceback.format_exc()))
 
                 self._write(err)
 
@@ -515,7 +514,14 @@ class Watchdog(threading.Thread):
        The thread's daemon flag.
     """
 
-    def __init__(self, rpc, name="nostartstoplog.rpcwatchdog", interval=0.02, daemon=False, start=True):
+    def __init__(
+        self,
+        rpc,
+        name="nostartstoplog.rpcwatchdog",
+        interval=0.02,
+        daemon=False,
+        start=True,
+    ):
         super(Watchdog, self).__init__()
         wdl[id(self)] = self
 
@@ -578,7 +584,8 @@ class Watchdog(threading.Thread):
                 else:
                     try:
                         rfds, wfds, efds = select.select(
-                            [rpc.stdin.fileno()], [], [], self.interval)
+                            [rpc.stdin.fileno()], [], [], self.interval
+                        )
                         # On some systems it seems we never got the select return,
                         # So we had to resort to polling way too much.
                         # It seems that might be fixed, so if possible we go back to slower
@@ -624,7 +631,6 @@ class Watchdog(threading.Thread):
 
 
 class RPCError(Exception):
-
     """
     Base class for RPC errors.
 
@@ -659,10 +665,10 @@ error_map_range = {}
 
 def is_range(code):
     return (
-        isinstance(code, tuple) and
-        len(code) == 2 and
-        all(isinstance(i, int) for i in code) and
-        code[0] < code[1]
+        isinstance(code, tuple)
+        and len(code) == 2
+        and all(isinstance(i, int) for i in code)
+        and code[0] < code[1]
     )
 
 
@@ -718,41 +724,35 @@ def get_error(code):
 
 @register_error
 class RPCParseError(RPCError):
-
     code = -32700
     title = "Parse error"
 
 
 @register_error
 class RPCInvalidRequest(RPCError):
-
     code = -32600
     title = "Invalid Request"
 
 
 @register_error
 class RPCMethodNotFound(RPCError):
-
     code = -32601
     title = "Method not found"
 
 
 @register_error
 class RPCInvalidParams(RPCError):
-
     code = -32602
     title = "Invalid params"
 
 
 @register_error
 class RPCInternalError(RPCError):
-
     code = -32603
     title = "Internal error"
 
 
 @register_error
 class RPCServerError(RPCError):
-
     code = (-32099, -32000)
     title = "Server error"

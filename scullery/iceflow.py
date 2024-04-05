@@ -9,10 +9,11 @@ import base64
 import os
 import threading
 import weakref
-from .jsonrpyc import RPC
+from typing import Optional
 from subprocess import PIPE, STDOUT
 from subprocess import Popen
 from . import workers
+from .jsonrpyc import RPC
 
 
 @functools.cache
@@ -46,16 +47,18 @@ def which(program):
 
 
 # Can't pass GST elements, have to pass IDs
-class eprox:
+class ElementProxy:
+    "Local proxy to element in the server process"
+
     def __init__(self, parent: GstreamerPipeline, obj_id) -> None:
         # This was making a bad GC loop issue.
         self.parent = weakref.ref(parent)
         self.id = obj_id
 
-    def set_property(self, p, v, maxWait=10):
+    def set_property(self, p, v, max_wait=10):
         x = self.parent()
         assert x
-        x.set_property(self.id, p, v, maxWait=maxWait)
+        x.set_property(self.id, p, v, max_wait=max_wait)
 
     def pull_buffer(self, timeout=0.1):
         x = self.parent()
@@ -72,145 +75,11 @@ pipes = weakref.WeakValueDictionary()
 
 
 class GStreamerPipeline:
-    def __getattr__(self, attr):
-        if self.ended or not self.worker.poll() is None:
-            raise RuntimeError("This process is already dead")
-
-        def f(*a, **k):
-            try:
-                return self.rpc.call(attr, args=a, kwargs=k, block=0.001, timeout=15)
-            except Exception:
-                if self.worker:
-                    self.worker.terminate()
-                    self.worker.kill()
-                    workers.do(self.worker.wait)
-                raise
-
-        return f
-
-    def pull_to_file(self, *a, **k):
-        if self.ended or not self.worker.poll() is None:
-            raise RuntimeError("This process is already dead")
-
-        try:
-            return self.rpc.call(
-                "pull_to_file", args=a, kwargs=k, block=0.001, timeout=0.5
-            )
-        except Exception:
-            if self.worker:
-                self.worker.terminate()
-                self.worker.kill()
-                workers.do(self.worker.wait)
-            raise
-
-    def __del__(self):
-        self.worker.terminate()
-        self.worker.kill()
-        workers.do(self.worker.wait)
-
-    def add_element(self, element_name: str, *a, **k):
-        "Returns an element proxy object"
-        # This has to do with setup and I suppose we probably shouldn't just let the error pass by.
-        if self.ended or not self.worker.poll() is None:
-            raise RuntimeError("This process is already dead")
-
-        for i in k:
-            if isinstance(k[i], eprox):
-                k[i] = k[i].id
-
-        if "connectToOutput" in k and isinstance(k["connectToOutput"], (list, tuple)):
-            k["connectToOutput"] = [
-                (i.id if isinstance(i, eprox) else i) for i in k["connectToOutput"]
-            ]
-        return eprox(
-            self,
-            self.rpc.call(
-                "add_elementRemote", args=(element_name, *a), kwargs=k, block=0.0001, timeout=5
-            ),
-        )
-
-    def set_property(self, *a, maxWait=10, **k):
-        # Probably Just Not Important enough to raise an error for this.
-        if self.ended or not self.worker.poll() is None:
-            print("Prop set in dead process")
-            self.ended = True
-            return
-        for i in k:
-            if isinstance(k[i], eprox):
-                k[i] = k[i].id
-        a = [i.id if isinstance(i, eprox) else i for i in a]
-        return eprox(
-            self,
-            self.rpc.call(
-                "set_property", args=a, kwargs=k, block=0.0001, timeout=maxWait
-            ),
-        )
-
-    def add_pil_capture(self, *a, **k):
-        # Probably Just Not Important enough to raise an error for this.
-        if self.ended or not self.worker.poll() is None:
-            print("Prop set in dead process")
-            self.ended = True
-            return
-        return eprox(
-            self,
-            self.rpc.call(
-                "addRemotePILCapture", args=a, kwargs=k, block=0.0001, timeout=10
-            ),
-        )
-
-    def on_appsink_data(self, elementName, data, *a, **k):
-        return
-
-    def _on_appsink_data(self, elementName, data):
-        self.on_appsink_data(elementName, base64.b64decode(data))
-
-    def on_motion_begin(self, *a, **k):
-        print("Motion start")
-
-    def on_motion_end(self, *a, **k):
-        print("Motion end")
-
-    def on_multi_file_sink_file(self, fn, *a, **k):
-        print("MultiFileSink", fn)
-
-    def on_barcode(self, type, data):
-        print("Barcode: ", type, data)
-
-    def stop(self):
-        if self.ended:
-            return
-
-        self.ended = True
-        if not self.worker.poll() is None:
-            self.rpc.stopFlag = True
-            self.ended = True
-            return
-        try:
-            x = self.rpc.call("stop", block=0.01, timeout=10)
-            self.rpc.stopFlag = True
-            self.worker.terminate()
-            time.sleep(0.5)
-            self.worker.kill()
-
-        except Exception:
-            self.rpc.stopFlag = True
-            self.worker.terminate()
-            time.sleep(0.5)
-            self.worker.kill()
-            workers.do(self.worker.wait)
-
-    def add_jack_mixer_send_elements(self, *a, **k):
-        a, b = self.rpc.call(
-            "add_jack_mixer_send_elements", args=a, kwargs=k, block=0.0001, timeout=10
-        )
-        return (eprox(self, a), eprox(self, b))
-
     def __init__(self, *a, **k):
         # -*- coding: utf-8 -*-
 
         # If del can't find this it would to an infinite loop
-        self.worker = None
+        self.worker: Optional[Popen] = None
 
         pipes[id(self)] = self
         self.ended = False
@@ -224,6 +93,7 @@ class GStreamerPipeline:
         env["GST_DEBUG"] = "*:1"
 
         self.rpc = None
+
         if which("kaithem._iceflow_server") and False:
             self.worker = Popen(
                 ["kaithem._iceflow_server"],
@@ -243,6 +113,155 @@ class GStreamerPipeline:
         # We have no way of knowing when it's actually ready and listening for commands if gstreamer
         # needs to load
         time.sleep(1)
+
+    def rpc_call(self, *a, **k):
+        if self.rpc:
+            return self.rpc.call(*a, **k)
+
+        raise RuntimeError("No RPC object")
+
+    def __getattr__(self, attr):
+        if self.ended or self.worker.poll() is not None:
+            raise RuntimeError("This process is already dead")
+
+        def f(*a, **k):
+            try:
+                return self.rpc_call(attr, args=a, kwargs=k, block=0.001, timeout=15)
+            except Exception:
+                if self.worker:
+                    self.worker.terminate()
+                    self.worker.kill()
+                    workers.do(self.worker.wait)
+                raise
+
+        return f
+
+    def pull_to_file(self, *a, **k):
+        if self.ended or self.worker.poll() is not None:
+            raise RuntimeError("This process is already dead")
+
+        try:
+            return self.rpc_call(
+                "pull_to_file", args=a, kwargs=k, block=0.001, timeout=0.5
+            )
+        except Exception:
+            if self.worker:
+                self.worker.terminate()
+                self.worker.kill()
+                workers.do(self.worker.wait)
+            raise
+
+    def __del__(self):
+        self.worker.terminate()
+        self.worker.kill()
+        workers.do(self.worker.wait)
+
+    def add_element(self, element_name: str, *a, **k):
+        "Returns an element proxy object"
+        # This has to do with setup and I suppose we probably shouldn't just let the error pass by.
+        if self.ended or self.worker.poll() is not None:
+            raise RuntimeError("This process is already dead")
+
+        # convert element proxies to their ids for transmission
+        for key, item in k.items():
+            if isinstance(item, ElementProxy):
+                k[key] = item.id
+
+        if "connectToOutput" in k and isinstance(k["connectToOutput"], (list, tuple)):
+            k["connectToOutput"] = [
+                (i.id if isinstance(i, ElementProxy) else i)
+                for i in k["connectToOutput"]
+            ]
+        return ElementProxy(
+            self,
+            self.rpc_call(
+                "add_elementRemote",
+                args=(element_name, *a),
+                kwargs=k,
+                block=0.0001,
+                timeout=5,
+            ),
+        )
+
+    def set_property(self, *a, max_wait=10, **k):
+        # Probably Just Not Important enough to raise an error for this.
+        if self.ended or self.worker.poll() is not None:
+            print("Prop set in dead process")
+            self.ended = True
+            return
+
+        # convert element proxies to their ids for transmission
+        for key, item in k.items():
+            if isinstance(item, ElementProxy):
+                k[key] = item.id
+
+        a = [i.id if isinstance(i, ElementProxy) else i for i in a]
+        return ElementProxy(
+            self,
+            self.rpc_call(
+                "set_property", args=a, kwargs=k, block=0.0001, timeout=max_wait
+            ),
+        )
+
+    def add_pil_capture(self, *a, **k):
+        # Probably Just Not Important enough to raise an error for this.
+        if self.ended or self.worker.poll() is not None:
+            print("Prop set in dead process")
+            self.ended = True
+            return
+        return ElementProxy(
+            self,
+            self.rpc_call(
+                "addRemotePILCapture", args=a, kwargs=k, block=0.0001, timeout=10
+            ),
+        )
+
+    def on_appsink_data(self, element_name, data, *a, **k):
+        return
+
+    def _on_appsink_data(self, element_name, data):
+        self.on_appsink_data(element_name, base64.b64decode(data))
+
+    def on_motion_begin(self, *a, **k):
+        print("Motion start")
+
+    def on_motion_end(self, *a, **k):
+        print("Motion end")
+
+    def on_multi_file_sink_file(self, fn, *a, **k):
+        print("MultiFileSink", fn)
+
+    def on_barcode(self, codetype, data):
+        print("Barcode: ", codetype, data)
+
+    def stop(self):
+        if self.ended:
+            return
+
+        self.ended = True
+        if self.worker.poll() is not None:
+            self.rpc.stopFlag = True
+            self.ended = True
+            return
+        try:
+            self.rpc_call("stop", block=0.01, timeout=10)
+            self.rpc.stopFlag = True
+            self.worker.terminate()
+            time.sleep(0.5)
+            self.worker.kill()
+
+        except Exception:
+            self.rpc.stopFlag = True
+            self.worker.terminate()
+            time.sleep(0.5)
+            self.worker.kill()
+            workers.do(self.worker.wait)
+
+    def add_jack_mixer_send_elements(self, *a, **k):
+        a, b = self.rpc_call(
+            "add_jack_mixer_send_elements", args=a, kwargs=k, block=0.0001, timeout=10
+        )
+        return (ElementProxy(self, a), ElementProxy(self, b))
 
     def print(self, s):
         print(s)

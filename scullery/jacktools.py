@@ -4,7 +4,8 @@
 import logging
 from . import messagebus, iceflow
 from . import workers
-__doc__ = ''
+
+__doc__ = ""
 
 
 import weakref
@@ -64,28 +65,28 @@ jackEventHandlingQueueLock = threading.Lock()
 portInfoByID = weakref.WeakValueDictionary()
 
 
-class PortInfo():
+class PortInfo:
     def __init__(self, name, isInput, sname, isAudio, aliases=None):
         self.isOutput = self.is_output = not isInput
         self.isInput = self.is_input = isInput
         self.isAudio = self.is_audio = isAudio
         self.name = name
         self.shortname = sname
-        self.clientName = name[:-len(":" + sname)]
+        self.clientName = name[: -len(":" + sname)]
         portInfoByID[id(self)] = self
         self.aliases = aliases or []
 
     def toDict(self):
-        return ({
-            'name': self.name,
-            'isInput': self.is_input,
-            'sname': self.shortname,
-            'isAudio': self.isAudio,
-            'aliases': self.aliases
-        })
+        return {
+            "name": self.name,
+            "isInput": self.is_input,
+            "sname": self.shortname,
+            "isAudio": self.isAudio,
+            "aliases": self.aliases,
+        }
 
 
-class JackClientProxy():
+class JackClientProxy:
     def __getattr__(self, attr):
         if self.ended or not self.worker.poll() is None:
             raise RuntimeError("This process is already dead")
@@ -95,8 +96,7 @@ class JackClientProxy():
             try:
                 # Can't serialize ports
                 a = [i.name if isinstance(i, PortInfo) else i for i in a]
-                x = self.rpc.call(attr, args=a, kwargs=k,
-                                  block=0.001, timeout=timeout)
+                x = self.rpc.call(attr, args=a, kwargs=k, block=0.001, timeout=timeout)
                 if isinstance(x, dict):
                     x = PortInfo(**x)
 
@@ -237,6 +237,7 @@ class JackClientProxy():
                 #         log.debug("JACK port "+ a.name+" connected to "+b.name)
 
                 # workers.do(f)
+
         jackEventHandlingQueue.append(f)
         workers.do(handle_jack_event)
 
@@ -263,8 +264,9 @@ class JackClientProxy():
         self.worker = None
 
         self.ended = False
-        f = os.path.join(os.path.dirname(os.path.abspath(
-            __file__)), "jack_client_subprocess.py")
+        f = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "jack_client_subprocess.py"
+        )
         env = {}
         env.update(os.environ)
 
@@ -273,13 +275,20 @@ class JackClientProxy():
         # if the new one isn't there, but is needed
         # for nixos et al compatibility
         if which("kaithem._jackmanager_server"):
-            self.worker = Popen(["kaithem._jackmanager_server"],
-                                stdout=PIPE, stdin=PIPE, stderr=STDOUT, env=env)
+            self.worker = Popen(
+                ["kaithem._jackmanager_server"],
+                stdout=PIPE,
+                stdin=PIPE,
+                stderr=STDOUT,
+                env=env,
+            )
         else:
-            self.worker = Popen(["python3", f], stdout=PIPE,
-                                stdin=PIPE, stderr=STDOUT, env=env)
-        self.rpc = RPC(target=self, stdin=self.worker.stdout,
-                       stdout=self.worker.stdin, daemon=True)
+            self.worker = Popen(
+                ["python3", f], stdout=PIPE, stdin=PIPE, stderr=STDOUT, env=env
+            )
+        self.rpc = RPC(
+            target=self, stdin=self.worker.stdout, stdout=self.worker.stdin, daemon=True
+        )
         self.rpc.call("init")
 
     def print(self, s):
@@ -421,9 +430,9 @@ errlog = []
 latestAirWireForGivenPair = weakref.WeakValueDictionary()
 
 
-class MonoAirwire():
+class MonoAirwire:
     """Represents a connection that should always exist as long as there
-    is a reference to this object. You can also enable and disable it with 
+    is a reference to this object. You can also enable and disable it with
     the connect() and disconnect() functions.
 
     They start out in the connected state
@@ -534,7 +543,7 @@ class MultichannelAirwire(MonoAirwire):
 
     def reconnect(self):
         """Connects the outputs of channel strip(Or other JACK thing)  f to the inputs of t, one to one, until
-        you run out of ports. 
+        you run out of ports.
 
         Note that channel strips only have the main inputs but can have sends,
         so we have to distinguish them in the regex.
@@ -544,15 +553,31 @@ class MultichannelAirwire(MonoAirwire):
         f, t = self._getEndpoints()
         if not f:
             return
-        f = f.replace('*:', '')
-        t = t.replace('*:', '')
+        f = f.replace("*:", "")
+        t = t.replace("*:", "")
 
         if portsListLock.acquire(timeout=10):
             try:
-                outPorts = sorted([portsList[i] for i in portsList if i.split(":")[0] == f
-                                   and portsList[i].is_audio and portsList[i].is_output], key=lambda x: x.name)
-                inPorts = sorted([portsList[i] for i in portsList if i.split(":")[
-                                 0] == t and portsList[i].is_audio and (not portsList[i].is_output)], key=lambda x: x.name)
+                outPorts = sorted(
+                    [
+                        portsList[i]
+                        for i in portsList
+                        if i.split(":")[0] == f
+                        and portsList[i].is_audio
+                        and portsList[i].is_output
+                    ],
+                    key=lambda x: x.name,
+                )
+                inPorts = sorted(
+                    [
+                        portsList[i]
+                        for i in portsList
+                        if i.split(":")[0] == t
+                        and portsList[i].is_audio
+                        and (not portsList[i].is_output)
+                    ],
+                    key=lambda x: x.name,
+                )
             finally:
                 portsListLock.release()
         else:
@@ -599,10 +624,26 @@ class MultichannelAirwire(MonoAirwire):
 
         if portsListLock.acquire(timeout=10):
             try:
-                outPorts = sorted([portsList[i] for i in portsList if i.split(":")[0] == f
-                                   and portsList[i].is_audio and portsList[i].is_output], key=lambda x: x.name)
-                inPorts = sorted([portsList[i] for i in portsList if i.split(":")[
-                                 0] == t and portsList[i].is_audio and (not portsList[i].is_output)], key=lambda x: x.name)
+                outPorts = sorted(
+                    [
+                        portsList[i]
+                        for i in portsList
+                        if i.split(":")[0] == f
+                        and portsList[i].is_audio
+                        and portsList[i].is_output
+                    ],
+                    key=lambda x: x.name,
+                )
+                inPorts = sorted(
+                    [
+                        portsList[i]
+                        for i in portsList
+                        if i.split(":")[0] == t
+                        and portsList[i].is_audio
+                        and (not portsList[i].is_output)
+                    ],
+                    key=lambda x: x.name,
+                )
             finally:
                 portsListLock.release()
 
@@ -637,7 +678,6 @@ class CombiningAirwire(MultichannelAirwire):
             return
         if lock.acquire(timeout=10):
             try:
-
                 if t.endswith("*"):
                     t = t[:-1]
 
@@ -689,7 +729,6 @@ class CombiningAirwire(MultichannelAirwire):
 
         if lock.acquire(timeout=10):
             try:
-
                 if t.endswith("*"):
                     t = t[:-1]
 
@@ -726,7 +765,6 @@ class CombiningAirwire(MultichannelAirwire):
 
 
 def Airwire(f, t, force_combining=False):
-
     # Can't connect to nothing, for now lets use a hack and make these nonsense
     # names so emoty strings don't connect to stuff
     if not f or not t:
@@ -748,7 +786,7 @@ def Airwire(f, t, force_combining=False):
 # This section manages the actual sound IO and creates jack ports
 # This code runs once when the event loads. It also runs when you save the event during the test compile
 # and may run multiple times when kaithem boots due to dependancy resolution
-__doc__ = ''
+__doc__ = ""
 
 
 def work():
@@ -762,7 +800,7 @@ def work():
         time.sleep(0.1)
 
     failcounter = 0
-    while (_reconnecterThreadObjectStopper[0]):
+    while _reconnecterThreadObjectStopper[0]:
         try:
             # The _checkJack stuf won't block, because we already have the lock
             if lock.acquire(timeout=2):
@@ -773,7 +811,7 @@ def work():
                     lock.release()
                 # _ensureConnections()
             else:
-                if (_reconnecterThreadObjectStopper[0]):
+                if _reconnecterThreadObjectStopper[0]:
                     raise RuntimeError("Could not get lock,retrying in 5s")
 
                 else:
@@ -796,7 +834,6 @@ def start_managing(p=None, n=None):
     global _reconnecterThreadObject
 
     with lock:
-
         try:
             _jackclient = JackClientProxy()
         except Exception:
@@ -824,7 +861,6 @@ def start_managing(p=None, n=None):
 
 def stop_managing():
     with lock:
-
         try:
             if _jackclient:
                 _jackclient.exit()
@@ -848,15 +884,16 @@ firstConnect = False
 def _checkJackClient(err=True):
     global _jackclient, realConnections, postedCheck, firstConnect
     import jack
+
     if lock.acquire(timeout=10):
         try:
-
             t = _jackclient.get_ports()
 
             if not t:
                 if firstConnect:
                     raise RuntimeError(
-                        "JACK Server not started or client not connected, will try connect ")
+                        "JACK Server not started or client not connected, will try connect "
+                    )
                 firstConnect = True
 
             if not postedCheck:
@@ -916,14 +953,14 @@ portsCacheTime = 0
 lastCheckedClientFromget_ports = 0
 
 
-def get_ports(*a, maxWait=10, **k):
+def get_ports(*a, max_wait=10, **k):
     global portsList, _jackclient, lastCheckedClientFromget_ports
 
-    if lock.acquire(timeout=maxWait):
+    if lock.acquire(timeout=max_wait):
         try:
             if not _jackclient:
                 # MOstly here so we can use this standalone from a unit test
-                if (lastCheckedClientFromget_ports < time.monotonic() - 120):
+                if lastCheckedClientFromget_ports < time.monotonic() - 120:
                     lastCheckedClientFromget_ports = time.monotonic()
                     workers.do(_checkJackClient)
                 return []
@@ -1006,7 +1043,7 @@ def disconnect(f, t):
 
                 # This feels race conditionful but i think it is important so that we don't try to double-disconnect.
                 # Be defensive with jack, the whole thing seems britttle
-                  # Let other side handle figuring out which is which
+                # Let other side handle figuring out which is which
                 for i in range(24):
                     # For unknown reasons it is possible to completely clog up the jack client.
                     # We must make a new one and retry should this ever happen
@@ -1045,9 +1082,9 @@ def disconnect_all_from(p: str):
     "Disconnect everything to do wth given port"
     find_real()
     for i in list(realConnections.keys()):
-        if i[0] == p or i[0].startswith(p+':'):
+        if i[0] == p or i[0].startswith(p + ":"):
             disconnect(*i)
-        elif i[1] == p or i[1].startswith(p+':'):
+        elif i[1] == p or i[1].startswith(p + ":"):
             disconnect(*i)
 
 
@@ -1066,8 +1103,7 @@ def connect(f, t, ts=None):
             time.sleep(1)
 
         if awaiting[0] > 12:
-            raise RuntimeError(
-                "Too many threads are waiting to make JACK connections")
+            raise RuntimeError("Too many threads are waiting to make JACK connections")
 
         awaiting[0] += 1
 

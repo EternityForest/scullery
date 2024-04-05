@@ -14,7 +14,12 @@ import base64
 import math
 import gi
 
-# import workers  # , ]messagebus
+gi.require_version("Gst", "1.0")
+gi.require_version("GstBase", "1.0")
+gi.require_version("Gtk", "3.0")
+
+
+from gi.repository import Gst  # noqa
 
 
 def doNow(f):
@@ -22,12 +27,6 @@ def doNow(f):
 
 
 lock = threading.RLock()
-
-gi.require_version("Gst", "1.0")
-gi.require_version("GstBase", "1.0")
-gi.require_version("Gtk", "3.0")
-
-from gi.repository import Gst  # noqa
 
 
 Gst.init(None)
@@ -104,7 +103,7 @@ class PresenceDetectorRegion:
         self.last = x if x else self.last
 
         rval = 0
-        if self.state:
+        if self.state and self.last:
             diff = ImageChops.difference(self.state, self.last)
             # This is an erosion operation to prioritize multipixel stuff
             # over single pixel noise
@@ -147,7 +146,6 @@ class PresenceDetector:
 
         x = self.capture.pull()
         if x is None:
-            print("Capture returned none")
             return None
 
         w = x.width
@@ -187,10 +185,10 @@ class PILCapture:
         x.save(f)
         return 1
 
-    def pull(self, timeout=0.1, forceLatest=False):
+    def pull(self, timeout=0.1, force_latest=False):
         sample = self.appsink.emit("try-pull-sample", timeout * 10**9)
 
-        if forceLatest:
+        if force_latest:
             # Try another pull but only wait 1ms.
             # This is in case there is another queued up frame, such as if we have buffer elements or something
             # before this
@@ -333,13 +331,12 @@ def wrfunc(f, fail_return=None):
 
 def makeWeakrefPoller(selfref, exitSignal):
     def pollerf():
-        alreadyStarted = False
         t = 0
-        seqNum = -1
+        seq_num = -1
         while selfref():
             self = selfref()
 
-            self.threadStarted = True
+            self.thread_started = True
             if not self.shouldRunThread:
                 exitSignal.append(True)
 
@@ -397,16 +394,16 @@ def makeWeakrefPoller(selfref, exitSignal):
                         self.on_error(self.bus, msg, None)
 
                     elif msg.type == Gst.MessageType.EOS:
-                        if msg.seqnum != seqNum:
+                        if msg.seqnum != seq_num:
                             self.on_eos(self.bus, msg, None)
 
                     elif msg.type == Gst.MessageType.SEGMENT_DONE:
-                        if msg.seqnum != seqNum:
+                        if msg.seqnum != seq_num:
                             self.on_segment_done()
 
                     self.on_message(self.bus, msg, None)
 
-                    seqNum = msg.seqnum
+                    seq_num = msg.seqnum
                 except Exception:
                     logging.exception("Err in pipeline:" + self.name)
                 finally:
@@ -454,7 +451,7 @@ def linkClosureMaker(self, src, dest, connectWhenAvailable, eid, deleteAfterUse=
 class GStreamerPipeline:
     """Semi-immutable pipeline that presents a nice subclassable GST pipeline You can only add stuff to it."""
 
-    def __init__(self, name=None, realtime=None, systemTime=False):
+    def __init__(self, name=None, realtime=None, system_time=False):
         self.lock = threading.RLock()
 
         self.seeklock = self.lock
@@ -473,9 +470,9 @@ class GStreamerPipeline:
         name = name or "Pipeline" + str(time.monotonic())
         self.realtime = realtime
         self._stopped = True
-        self.syncStop = False
+        self.sync_stop = False
         self.pipeline = Gst.Pipeline()
-        self.threadStarted = False
+        self.thread_started = False
         self.weakrefs = weakref.WeakValueDictionary()
 
         self.proxyToElement = weakref.WeakValueDictionary()
@@ -548,7 +545,7 @@ class GStreamerPipeline:
         self.lastElementType = None
 
         # If true, keep the pipeline running at the same rate as system time
-        self.systemTime = systemTime
+        self.system_time = system_time
         self.targetRate = 1.0
         self.pipelineRate = 1.0
 
@@ -669,7 +666,7 @@ class GStreamerPipeline:
             return current / 10**9
 
     @staticmethod
-    def setCurrentThreadPriority(x, y):
+    def setcurrent_threadPriority(x, y):
         raise RuntimeError("Must override this to use realtime priority")
 
     def syncMessage(self, *arguments):
@@ -686,11 +683,11 @@ class GStreamerPipeline:
                             self.bus.set_sync_handler(None, 0, None)
 
                 doNow(noSyncHandler)
-            if threading.currentThread().ident not in self.knownThreads:
-                self.knownThreads[threading.currentThread().ident] = True
+            if threading.current_thread().ident not in self.knownThreads:
+                self.knownThreads[threading.current_thread().ident] = True
                 if self.realtime:
                     try:
-                        self.setCurrentThreadPriority(1, self.realtime)
+                        self.setcurrent_threadPriority(1, self.realtime)
                     except Exception:
                         log.exception("Error setting realtime priority")
             return Gst.BusSyncReply.PASS
@@ -722,13 +719,13 @@ class GStreamerPipeline:
         t = time.monotonic()
 
         # Give it some time, in case it really was started
-        if not self.threadStarted:
+        if not self.thread_started:
             time.sleep(0.01)
             time.sleep(0.01)
             time.sleep(0.01)
             time.sleep(0.01)
 
-        if self.threadStarted:
+        if self.thread_started:
             while not self.exitSignal:
                 time.sleep(0.1)
                 if time.monotonic() - t > 10:
@@ -836,7 +833,7 @@ class GStreamerPipeline:
         doNow(f)
 
     def start(self, effectiveStartTime=None, timeout=10, segment=False):
-        "effectiveStartTime is used to keep multiple players synced when used with systemTime"
+        "effectiveStartTime is used to keep multiple players synced when used with system_time"
         with self.lock:
             if self.exiting:
                 return
@@ -847,7 +844,7 @@ class GStreamerPipeline:
             self.startTime = time.monotonic() - timeAgo
 
             # Go straight to playing, no need to locally do paused if we aren't using that feature
-            if self.systemTime or effectiveStartTime or segment:
+            if self.system_time or effectiveStartTime or segment:
                 if not self.pipeline.get_state(1000_000_000)[1] == (
                     Gst.State.PAUSED,
                     Gst.State.PLAYING,
@@ -862,7 +859,7 @@ class GStreamerPipeline:
 
             # We accept cutting off a few 100 milliseconds if it means
             # staying synced.
-            if self.systemTime:
+            if self.system_time:
                 self.seek(time.monotonic() - self.startTime)
 
             elif segment:
@@ -980,7 +977,7 @@ class GStreamerPipeline:
                 t = time.monotonic()
                 time.sleep(0.01)
 
-                if not self.threadStarted:
+                if not self.thread_started:
                     time.sleep(0.01)
                     time.sleep(0.01)
                     time.sleep(0.01)
@@ -991,7 +988,7 @@ class GStreamerPipeline:
 
                 # It shouldn't really be critical, most likely the thread can stop on it's own time anyway,
                 # because it doesn't do anything without getting the lock.
-                if self.threadStarted:
+                if self.thread_started:
                     while not self.exitSignal:
                         time.sleep(0.1)
                         if time.monotonic() - t > 10:
@@ -1090,17 +1087,23 @@ class GStreamerPipeline:
 
         return PILSource(appsrc, greyscale)
 
-    def addAppSink(self, connectToOutput=None, buffer=1):
+    def addAppSink(self, connectToOutput=False, buffer=1):
         "Return a video capture object"
 
-        appsink = self.add_element("appsink", drop=True, sync=False, max_buffers=buffer)
+        appsink = self.add_element(
+            "appsink",
+            drop=True,
+            sync=False,
+            max_buffers=buffer,
+            connectToOutput=connectToOutput,
+        )
 
         return AppSink(appsink)
 
-    def addAppSrc(self, connectToOutput=None, buffer=1, caps=""):
+    def addAppSrc(self, connectToOutput=False, buffer=1, caps=""):
         "Return a video capture object"
 
-        appsrc = self.add_element("appsrc", caps=caps, connectToOutput=False)
+        appsrc = self.add_element("appsrc", caps=caps, connectToOutput=connectToOutput)
         return AppSource(appsrc)
 
     def pull_buffer(self, element, timeout=0.1):
@@ -1115,7 +1118,7 @@ class GStreamerPipeline:
             return None
 
         buf = sample.get_buffer()
-        caps = sample.get_caps()
+        sample.get_caps()
 
         return base64.b64encode(buf.extract_dup(0, buf.get_size()))
 
@@ -1143,7 +1146,7 @@ class GStreamerPipeline:
             # if t=='appsink':
             #     e.connect("new-sample", self.appsinkhandler, name)
 
-            if e == None:
+            if e is None:
                 raise ValueError("Nonexistant element type: " + t)
             self.weakrefs[str(e)] = e
             self.elementTypesById[id(e)] = t
