@@ -13,26 +13,24 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/EternityForest/scullery",
     packages=setuptools.find_packages(),
-    package_data={'':["**/scullery/thirdparty/baresip/**"]},
-
 
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
         "Operating System :: OS Independent"
     ],
     python_requires='>=3.6',
     install_requires=[
-          'pyyaml',
-          'typeguard',
-          "sf2utils",
-          "pyFluidSynth",
-          "paho-mqtt",
-      ],
+        'pyyaml',
+        'typeguard',
+        "sf2utils",
+        "pyFluidSynth",
+        "paho-mqtt",
+    ],
 )
 
 
-#To push to pypi
-#sudo python3 setup.py sdist bdist_wheel
-#python3 -m twine upload dist/* 
+# To push to pypi
+# sudo python3 setup.py sdist bdist_wheel
+# python3 -m twine upload dist/*

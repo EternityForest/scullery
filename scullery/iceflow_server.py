@@ -1,17 +1,5 @@
-
-# Copyright Daniel Dunn 2019
-# This file is part of Kaithem Automation.
-
-# Kaithem Automation is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-
-# Kaithem Automation is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
+# SPDX-FileCopyrightText: Copyright Daniel Dunn
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 import threading
 import time
@@ -313,7 +301,6 @@ def init():
             gi.require_version('GstBase', '1.0')
             gi.require_version('Gtk', '3.0')
             from gi.repository import Gst as gst
-            from gi.repository import GObject, GstBase, Gtk, GObject, GLib
             Gst = gst
             Gst.init(None)
 
@@ -451,7 +438,7 @@ def linkClosureMaker(self, src, dest, connectWhenAvailable, eid, deleteAfterUse=
     def linkFunction(element, pad, dummy):
         s = pad.query_caps(None).to_string()
         if isinstance(connectWhenAvailable, str):
-            if not connectWhenAvailable in s:
+            if connectWhenAvailable not in s:
                 return
 
         if eid in self().waitingCallbacks:
@@ -595,7 +582,7 @@ class GStreamerPipeline():
 
             if not _raw:
                 # Set "effective start time" so that the system clock sync keeps working.
-                if not t is None:
+                if t is not None:
                     t = max(t, 0)
                     self.startTime = time.monotonic() - t
                 self.targetRate = rate
@@ -672,7 +659,7 @@ class GStreamerPipeline():
                         if hasattr(self, 'bus'):
                             self.bus.set_sync_handler(None, 0, None)
                 doNow(noSyncHandler)
-            if not threading.currentThread().ident in self.knownThreads:
+            if threading.currentThread().ident not in self.knownThreads:
                 self.knownThreads[threading.currentThread().ident] = True
                 if self.realtime:
                     try:
@@ -865,7 +852,7 @@ class GStreamerPipeline():
             if not self.running:
                 raise RuntimeError(
                     "Pipeline is not paused, or running, call start()")
-            if not self.pipeline.get_state(1000_000_000)[1] in (Gst.State.PLAYING, Gst.State.PAUSED, Gst.State.READY):
+            if self.pipeline.get_state(1000_000_000)[1] not in (Gst.State.PLAYING, Gst.State.PAUSED, Gst.State.READY):
                 raise RuntimeError(
                     "Pipeline is not paused, or running, call start()")
 
@@ -1100,11 +1087,11 @@ class GStreamerPipeline():
 
                 for connectToOutput in cto:
 
-                    if not connectToOutput is False:
+                    if connectToOutput is not False:
                         if isinstance(connectToOutput, int):
                             connectToOutput = elementsByShortId[connectToOutput]
 
-                        if not id(connectToOutput) in self.elementTypesById:
+                        if id(connectToOutput) not in self.elementTypesById:
                             raise ValueError("Cannot connect to the output of: " +
                                              str(connectToOutput) + ", no such element in pipeline.")
                         op.append(connectToOutput)
@@ -1120,7 +1107,7 @@ class GStreamerPipeline():
                     connectToOutput = False
 
                 # This could be the first element
-                if self.elements and (not (connectToOutput is False)):
+                if self.elements and (connectToOutput is not False):
                     connectToOutput = connectToOutput or self.elements[-1]
 
                     # Fakesinks have no output, we automatically don't connect those

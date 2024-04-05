@@ -1,23 +1,32 @@
-import sys,os,weakref,types
-#Credit to Jay of stack overflow for this function
+# SPDX-FileCopyrightText: Copyright Daniel Dunn
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+
+import sys
+import os
+import weakref
+import types
+# Credit to Jay of stack overflow for this function
+
+
 def which(program):
     "Check if a program is installed like you would do with UNIX's which command."
 
-    #Because in windows, the actual executable name has .exe while the command name does not.
+    # Because in windows, the actual executable name has .exe while the command name does not.
     if sys.platform == "win32" and not program.endswith(".exe"):
         program += ".exe"
 
-    #Find out if path represents a file that the current user can execute.
+    # Find out if path represents a file that the current user can execute.
     def is_exe(fpath):
         return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
     fpath, fname = os.path.split(program)
-    #If the input was a direct path to an executable, return it
+    # If the input was a direct path to an executable, return it
     if fpath:
         if is_exe(program):
             return program
 
-    #Else search the path for the file.
+    # Else search the path for the file.
     else:
         for path in os.environ["PATH"].split(os.pathsep):
             path = path.strip('"')
@@ -25,11 +34,12 @@ def which(program):
             if is_exe(exe_file):
                 return exe_file
 
-    #If we got this far in execution, we assume the file is not there and return None
+    # If we got this far in execution, we assume the file is not there and return None
     return None
 
-def universal_weakref(f,cb=None):
-    if isinstance(f,types.MethodType):
-        return weakref.WeakMethod(f,cb)
+
+def universal_weakref(f, cb=None):
+    if isinstance(f, types.MethodType):
+        return weakref.WeakMethod(f, cb)
     else:
-        return weakref.ref(f,cb)
+        return weakref.ref(f, cb)
