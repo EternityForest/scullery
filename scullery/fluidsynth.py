@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: Copyright Daniel Dunn
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
+from __future__ import annotations
+
 import time
 import weakref
 import os
 import yaml
 import threading
 import logging
+
 gmInstruments = None
 
 players = weakref.WeakValueDictionary()
@@ -18,7 +21,7 @@ def all_notes_off():
     try:
         for i in players:
             players[i].fs.all_notes_off(-1)
-    except:
+    except Exception:
         pass
 
 
@@ -26,7 +29,7 @@ def stop_all():
     try:
         for i in players:
             players[i].close()
-    except:
+    except Exception:
         pass
 
 
@@ -34,7 +37,7 @@ def remake_all():
     try:
         for i in players:
             players[i].close()
-    except:
+    except Exception:
         pass
 
 
@@ -42,7 +45,9 @@ def get_gm_instruments():
     global gmInstruments
     if gmInstruments:
         return gmInstruments
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gm_instruments.yaml')) as f:
+    with open(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "gm_instruments.yaml")
+    ) as f:
         gmInstruments = yaml.load(f.read(), yaml.SafeLoader)
     return gmInstruments
 
@@ -51,18 +56,18 @@ def find_gm_instrument(name, look_in_soundfont=None, bank=None):
     # Allow manually selected instruments
     try:
         return (bank, int(name))
-    except:
+    except Exception:
         pass
-    name = name.replace("(", '').replace(')', '')
+    name = name.replace("(", "").replace(")", "")
     # Try to find a matching patch name in the soundfont
     if look_in_soundfont:
         try:
             from sf2utils.sf2parse import Sf2File
-            with open(look_in_soundfont, 'rb') as sf2_file:
+
+            with open(look_in_soundfont, "rb") as sf2_file:
                 sf2 = Sf2File(sf2_file)
             # Names
-            x = [i[0].split(b"\0")[0].decode("utf8")
-                 for i in sf2.raw.pdta['Phdr']]
+            x = [i[0].split(b"\0")[0].decode("utf8") for i in sf2.raw.pdta["Phdr"]]
         except Exception as e:
             logging.exception("Can't get metadata from this soundfont")
             print("Error looking through soundfont data", e)
@@ -71,29 +76,32 @@ def find_gm_instrument(name, look_in_soundfont=None, bank=None):
         # Indexes
         for i in range(len(x)):
             n = x[i].lower()
-            n = n.replace("(", '').replace(')', '')
+            n = n.replace("(", "").replace(")", "")
             n = n.split(" ")
             match = True
 
             for j in name.lower().split(" "):
-                if not j in n:
+                if j not in n:
                     # Bank 128 is reserved for drums so it can substitute for drum related words,
                     # It's still a match
-                    if not (j in ('kit', 'drums', 'drum') and sf2.raw.pdta['Phdr'][i][2] == 128):
+                    if not (
+                        j in ("kit", "drums", "drum")
+                        and sf2.raw.pdta["Phdr"][i][2] == 128
+                    ):
                         match = False
             if match:
                 if bank == None:
-                    return (sf2.raw.pdta['Phdr'][i][2], sf2.raw.pdta['Phdr'][i][1])
-                return (bank, sf2.raw.pdta['Phdr'][i][1])
+                    return (sf2.raw.pdta["Phdr"][i][2], sf2.raw.pdta["Phdr"][i][1])
+                return (bank, sf2.raw.pdta["Phdr"][i][1])
 
     x = get_gm_instruments()
     for i in x:
         n = x[i].lower()
-        n = n.replace("(", '').replace(')', '')
+        n = n.replace("(", "").replace(")", "")
         n = n.split(" ")
         match = True
         for j in name.lower().split(" "):
-            if not j in n:
+            if j not in n:
                 match = False
         if match:
             return (bank or 0, i)
@@ -102,6 +110,7 @@ def find_gm_instrument(name, look_in_soundfont=None, bank=None):
 
 def wait_for_jack():
     from scullery import jacktools
+
     for i in range(10):
         if not jacktools.get_ports():
             time.sleep(1)
@@ -113,13 +122,14 @@ def wait_for_jack():
 
 def find_sound_font(specific=None, extra_fallback=None):
     # Support the debian, Arch, and EmberOS conventions
-    l = ['/usr/share/sounds/sf3/MuseScore_General_Lite.sf3',
-         '/var/public.files/emberos/SoundFonts/MuseScore_General.sf3',
-         '/usr/share/sounds/sf3/MuseScore_General.sf3',
-         "/usr/share/sounds/sf2/FluidR3_GM.sf2",
-         '/var/public.files/emberos/SoundFonts/FluidR3_GM.sf3',
-         '/usr/share/soundfonts/FluidR3_GM.sf2'
-         ]
+    l = [
+        "/usr/share/sounds/sf3/MuseScore_General_Lite.sf3",
+        "/var/public.files/emberos/SoundFonts/MuseScore_General.sf3",
+        "/usr/share/sounds/sf3/MuseScore_General.sf3",
+        "/usr/share/sounds/sf2/FluidR3_GM.sf2",
+        "/var/public.files/emberos/SoundFonts/FluidR3_GM.sf3",
+        "/usr/share/soundfonts/FluidR3_GM.sf2",
+    ]
 
     if os.path.exists(specific):
         return specific
@@ -131,24 +141,36 @@ def find_sound_font(specific=None, extra_fallback=None):
     return extra_fallback
 
 
-class FluidSynth():
+class FluidSynth:
     defaultSoundfont = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
-    def __init__(self, soundfont=None, jack_client_name=None, gain=0.2,
-                 connect_midi=None, connect_output=None, reverb=False, chorus=False, ondemand=True):
+    def __init__(
+        self,
+        soundfont=None,
+        jack_client_name=None,
+        gain=0.2,
+        connect_midi=None,
+        connect_output=None,
+        reverb=False,
+        chorus=False,
+        ondemand=True,
+    ):
+        self.fs: fluidsynth.Synth
         players[id(self)] = self
 
         if jack_client_name:
             from . import jacktools
+
             wait_for_jack()
 
         self.soundfont = soundfont or self.defaultSoundfont
 
         if not os.path.isfile(self.soundfont):
-            raise OSError("Soundfont: "+soundfont +
-                          " does not exist or is not a file")
+            raise OSError(
+                "Soundfont: " + self.soundfont + " does not exist or is not a file"
+            )
 
-        from . thirdparty import fluidsynth
+        from .thirdparty import fluidsynth
 
         def remake():
             self.fs = fluidsynth.Synth(gain=gain)
@@ -156,9 +178,8 @@ class FluidSynth():
             self.fs.setting("synth.reverb.active", 1 if reverb else 0)
 
             try:
-                self.fs.setting("synth.dynamic-sample-loading",
-                                1 if ondemand else 0)
-            except:
+                self.fs.setting("synth.dynamic-sample-loading", 1 if ondemand else 0)
+            except Exception:
                 logging.exception("No dynamic loading support, ignoring")
             self.sfid = self.fs.sfload(self.soundfont)
             usingJack = False
@@ -175,7 +196,8 @@ class FluidSynth():
 
             if connect_output:
                 self.airwire = jacktools.Airwire(
-                    jack_client_name or 'KaithemFluidsynth', connect_output)
+                    jack_client_name or "KaithemFluidsynth", connect_output
+                )
                 self.airwire.connect()
 
             if usingJack:
@@ -183,7 +205,7 @@ class FluidSynth():
                     self.fs.setting("audio.jack.id", "fstest")
                     self.fs.setting("midi.jack.id", "fstest")
 
-                self.fs.setting("midi.driver", 'jack')
+                self.fs.setting("midi.driver", "jack")
                 self.fs.start(driver="jack", midi_driver="jack")
 
             else:
@@ -191,6 +213,7 @@ class FluidSynth():
                 self.fs.start()
             for i in range(16):
                 self.fs.program_select(i, self.sfid, 0, 0)
+
         remake()
 
         # allow restart after JACK settings change
@@ -221,7 +244,7 @@ class FluidSynth():
     def close(self):
         with lock:
             try:
-                if hasattr(self, 'fs'):
+                if hasattr(self, "fs"):
                     self.fs.delete()
                     del self.fs
             except AttributeError:
