@@ -6,6 +6,7 @@ import sys
 import os
 import weakref
 import types
+from typing import List
 # Credit to Jay of stack overflow for this function
 
 
@@ -43,3 +44,9 @@ def universal_weakref(f, cb=None):
         return weakref.WeakMethod(f, cb)
     else:
         return weakref.ref(f, cb)
+
+
+def search_paths(fn: str, paths: List[str]) -> str | None:
+    for i in paths:
+        if os.path.exists(os.path.join(i, fn)):
+            return os.path.join(i, fn)

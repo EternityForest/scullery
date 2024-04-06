@@ -5,10 +5,8 @@ Python library that provides some core parts of KaithemAutomation, especially th
 * Data persistance
 * Message bus
 * Thread pool worker(At one point, Python did not natively have this, may be deprecated now that it does)
-* Media handling library that gives a much nicer interface to gstreamer.
-* JACK connection manager(No longer tested with actual JACK, meant for pipewire)
 
-
+* Media Handling and JACK now moved to IceFlow
 
 ## Intro
 See example.py for more details. Also see the equally simple audio and video player.
@@ -31,7 +29,7 @@ import scullery.persist
 def subscriber(topic,val):
 
     print("Got a message")
-    
+
 #Unsubscribe happens automatically if we don't keep a ref to the function
 scullery.messagebus.subscribe("/test/topic",subscriber)
 
@@ -79,107 +77,3 @@ This module deals with unit conversions.
 #### scullery.units.convert(value,fromUnit, toUnit)
 Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
 supported.
-
-
-### scullery.mqtt
-
-Undocumented, deprecated. The functionality is better done by raw Paho.
-
-### scullery.jack
-
-This submodule requires pyjack, and of course Jack.
-
-#### Message Bus activity
-
-##### /system/jack/newport
- A PortInfo object with a .name, isInput, and isOutput property gets posted here whenever a new port is added to JACK.
-
-##### /system/jack/delport
- A PortInfo object gets posted here whenever a port is unregistered.
-
-##### system/jack/started
-When jack is started or restarted
-
-#### sullery.jack.start_managing()
-Start the worker thread and enable management functions
-
-#### scullery.jack.Airwire(from,to)
-Return an Airwire object. This is a declaration that you want to connect two clients or ports and keep them connected.
-If you try to connect a client to a single port, all outputs get mixed down. Likewise a port to a client duplicates to all inputs.
-
-They start in the dis_connected state.
-
-
-#### scullery.jack.Airwire.connect()
-Connect and stay connected. Even if a client dissapears and comes back. Deleting the Airwire will disconnect.
-Note that manually disconnecting may not be undone, to prevent annoyance.
-
-#### scullery.jack.Airwire.disconnect()
-Disconnect.
-
-
-
-### scullery.fluidsynth
-
-This module deals with MIDI synthesis
-
-### scullery.fluidsynth.FluidSynth(self, soundfont=None,jack_client_name=None)
-
-Creates an instance of the FluidSynth soundfont synthesizer. Soundfont is an file path, or it defaults
-to one that sometimes ships with fluidsynth. if jack_client_name is provided, outputs audio via JACK.
-
-You don't have to worry about cleanup, that happens automatically on GC.
-
-Using this without JACK may not work.
-
-#### fs.noteOn(channel,note,velocity)
-#### fs.noteOff(channel,note)
-#### fs.setInstrument(channel,instrument)
-Set the instrumemt. If instrument is str, we will use the closest match we can find, or raise an error.
-
-
-
-### scullery.iceflow.GStreamerPipeline
-This is the base class for making GStreamer apps
-
-#### add_element(elementType, name=None, connectToOutput=None,**kwargs)
-
-Adds an element to the pipe and returns a weakref proxy. Normally, this will connect to the last added
-element, but you can explicitly pass a an object to connect to. If the last object is a decodebin, it will be connected when a suitable pad
-on that is available.
-
-The `**kwargs` are used to set properties of the element.
-
-#### add_pil_capture(resolution, connectToOutput=None,buffer=1)
-Adds a PILCapture object which acts like a video sink. It will buffer the most recent N frames, discarding as needed.
-
-##### PILCapture.pull()
-Return a video frame as a PIL/Pillow Image. May return None on empty buffers.
-
-#### set_property(element, property, value)
-Set a prop of an element, with some added nice features like converting strings to GstCaps where needed, and checking that filesrc locations are actually
-valid files that exist.
-
-#### onMessage(source, name, structure)
-Used for subclassing. Called when a message that has a structure is seen on the bus. Source is the GST elemeny, struct is dict-like, and name is a string.
-
-#### play()
-If paused, start. If never started, raise an error.
-
-#### start()
-Start running
-
-#### stop()
-
-Permanently stop and clean up.
-
-#### pause()
-
-What it sounds like
-
-#### isActive()
-
-Return True if playing or paused
-
-#### seek(t=None, rate=None)
-Seek to a time, set playback rate, or both.
