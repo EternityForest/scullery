@@ -6,7 +6,7 @@ import sys
 import os
 import weakref
 import types
-from typing import List
+from typing import TypeVar
 # Credit to Jay of stack overflow for this function
 
 
@@ -39,14 +39,19 @@ def which(program):
     return None
 
 
-def universal_weakref(f, cb=None):
+T = TypeVar("T")
+
+
+def universal_weakref(f: T, cb=None) -> weakref.ref[T]:
+    "Return a weakref or weakmethod as appropriate for f"
     if isinstance(f, types.MethodType):
-        return weakref.WeakMethod(f, cb)
+        # TODO why doesn't linter know this is safe?
+        return weakref.WeakMethod(f, cb)  # type: ignore
     else:
         return weakref.ref(f, cb)
 
 
-def search_paths(fn: str, paths: List[str]) -> str | None:
+def search_paths(fn: str, paths: list[str]) -> str | None:
     for i in paths:
         if os.path.exists(os.path.join(i, fn)):
             return os.path.join(i, fn)

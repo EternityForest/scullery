@@ -77,3 +77,55 @@ This module deals with unit conversions.
 #### scullery.units.convert(value,fromUnit, toUnit)
 Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
 supported.
+
+
+## Scheduling(Coming 0.16.0)
+Wraps the very simple scheduling module in a way that supports
+repeating events, error reporting, and weakref-based cleanup.
+
+## Example
+```python
+import logging
+import sys
+import time
+import gc
+import scullery.scheduling
+
+# Set up logging, for demo purposes
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+@scullery.scheduling.every(1)
+def f():
+    print("test")
+
+time.sleep(4)
+
+# You could delete f and it would go away, but lets not because
+# del f
+f.unregister()
+
+
+# Since you can't decorate the class methods
+# the same way, we do this
+
+class Foo():
+    def __init__(self):
+        # Must keep a reference to scheduled
+        # Or it will stop
+        self.scheduled = scullery.scheduling.every(self.bar,1)
+
+    def bar(self):
+        print("test 2")
+
+
+f = Foo()
+time.sleep(3)
+# We don't call unregister, so we get a warning.
+# f.scheduled.unregister()
+del f
+# Garbage collect so the deleter runs right away
+gc.collect()
+
+# Should stop running because we deleted the class
+time.sleep(3)
+```
