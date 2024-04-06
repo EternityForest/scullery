@@ -6,7 +6,7 @@ Python library that provides some core parts of KaithemAutomation, especially th
 * Message bus
 * Thread pool worker(At one point, Python did not natively have this, may be deprecated now that it does)
 
-* Media Handling and JACK now moved to IceFlow
+* Media Handling and JACK now moved to [IceMedia](https://github.com/EternityForest/icemedia)
 
 ## Intro
 See example.py for more details. Also see the equally simple audio and video player.
