@@ -74,12 +74,16 @@ If the function has an attribute messagebusWrapperFor, the value of that propert
 ### scullery.units
 This module deals with unit conversions.
 
-#### scullery.units.convert(value,fromUnit, toUnit)
+#### scullery.units.convert(value,from_unit, to_unit)
 Try to convert the value, falling back to the (very slow) pint library for less common conversions not natively
 supported.
 
+#### scullery.units.si_format_number(value, digits=2)
 
-## Scheduling(Coming 0.16.0)
+Format a number like 2000 -> "2k", digits controls max decimal places after.
+
+
+## Scheduling
 Wraps the very simple scheduling module in a way that supports
 repeating events, error reporting, and weakref-based cleanup.
 
@@ -130,7 +134,7 @@ gc.collect()
 time.sleep(3)
 ```
 
-## State Machines(Coming 0.16.0)
+## State Machines
 
 
 ```python
