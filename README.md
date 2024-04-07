@@ -19,9 +19,6 @@ See example.py for more details. Also see the equally simple audio and video pla
 import scullery.workers
 "This file demonstrates a lot of scullery's functionality in a small package"
 
-#Most things require this thread pool to be running
-scullery.workers.start()
-
 #Including just importing this, #Todo?
 import scullery.messagebus
 
@@ -58,19 +55,36 @@ while(1):
 
 ### scullery.messagebus
 
-#### scullery.messagebus.subscribe(callback,topic)
-Subscribe to a topic. Topics are a slash delimited heirarchy,a # at the end is a wildcard,
-just like MQTT.
+#### kaithem.message.post(topic,message, timestamp=None, annotation=None)
 
+Post a message to the internal system-wide message bus.
+Message topics are hierarchial, delimited by forward
+slashes, and the root directory is /. However /foo is equivalent to
+foo.
 
-#### scullery.messagebus.subscriber_error_handlers  = []
+messages may be any python object at all.
 
-List of functions to be called whenever an error happens in a subscribed function.
+The timestamp will be set to time.monotonic() if it is None.
 
-Signature must be function,topic,value.
+Annotation is used for sending "extra" or "hidden" metadata, usually for preventing loops. It defaults to None.
 
-If the function has an attribute messagebusWrapperFor, the value of that property is passed instead of the function itself. Any higher level stuff that uses the message bus must set this property when wrapping functions.
+#### kaithem.message.subscribe(topic,callback)
 
+Request that function *callback* which must take four arguments(topic,message, timestamp,annotation), two
+arguments(topic,message), or just one argument(message) be called whenever a message matching the topic
+is posted.
+
+Wildcards follow MQTT subscription rules.
+
+Should the topic end with a slash and a hash, it will also match all
+subtopics(e.g. "/foo/#" will match "/foo", "/foo/bar" and
+"/foo/anything").
+
+Uncaught errors in the callback are ignored but logged.
+
+You must always maintain a reference to the callback, otherwise, the
+callback will be garbage collected and auto-unsubscribed. This is also
+how you unsubscribe.
 
 
 ### scullery.units

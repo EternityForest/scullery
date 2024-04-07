@@ -119,11 +119,11 @@ def _makeWorker(e, q, id, fastMode=False):
             wakeupHandlesMutable.append(handle)
             wakeupHandles = wakeupHandlesMutable[:]
 
-        while (run):
+        while run:
             try:
                 runningState[0] = True
                 # While either our direct  queue or the overflow queue has things in it we do them.
-                while (len(taskQueue)):
+                while len(taskQueue):
                     try:
                         f = pop()
                     except Exception:
@@ -139,24 +139,32 @@ def _makeWorker(e, q, id, fastMode=False):
                                 if lastWorkersError < monotonic() - 60:
                                     syslogger.exception(
                                         "Error in function. This message is ratelimited, see debug logs for full.\r\nIn "
-                                        + f[0].__name__ + " from " +
-                                        f[0].__module__ + "\r\n")
+                                        + f[0].__name__
+                                        + " from "
+                                        + f[0].__module__
+                                        + "\r\n"
+                                    )
                                     lastWorkersError = monotonic()
 
                                 logger.exception(
                                     "Error in function running in thread pool "
-                                    + f[0].__name__ + " from " +
-                                    f[0].__module__)
+                                    + f[0].__name__
+                                    + " from "
+                                    + f[0].__module__
+                                )
                             except Exception:
-                                print("Failed to handle error: " +
-                                      traceback.format_exc(6))
+                                print(
+                                    "Failed to handle error: " + traceback.format_exc(6)
+                                )
 
                             for i in backgroundFunctionErrorHandlers:
                                 try:
                                     i(f)
                                 except Exception:
-                                    print("Failed to handle error: " +
-                                          traceback.format_exc(6))
+                                    print(
+                                        "Failed to handle error: "
+                                        + traceback.format_exc(6)
+                                    )
                         finally:
                             # We do not want f staying around, if might hold references that should be GCed away immediatly
                             f = None
@@ -171,8 +179,9 @@ def _makeWorker(e, q, id, fastMode=False):
                 if not taskQueue:
                     # Randomize, so they don't all sync up
                     # FastMode polls at 100Hz
-                    x = e.acquire(timeout=(random.random() *
-                                           2) if not fastMode else 0.01)
+                    x = e.acquire(
+                        timeout=(random.random() * 2) if not fastMode else 0.01
+                    )
                     runningState[0] = True
 
                 if not x and not taskQueue:
@@ -200,7 +209,8 @@ def _makeWorker(e, q, id, fastMode=False):
                                                 unbusyCount += 1
 
                                         if unbusyCount > 2 and lastStoppedThread < (
-                                                monotonic() - 5):
+                                            monotonic() - 5
+                                        ):
                                             lastStoppedThread = monotonic()
                                             shouldRun = None
                                             del workersMutable[id]
@@ -225,8 +235,10 @@ def addWorker():
 
             id = time.time()
             # First worker always polls at 100hz
-            t = threading.Thread(target=_makeWorker(e, q, id),
-                                 name="nostartstoplog.ThreadPoolWorker-" + str(id))
+            t = threading.Thread(
+                target=_makeWorker(e, q, id),
+                name="nostartstoplog.ThreadPoolWorker-" + str(id),
+            )
             workersMutable[id] = t
             t.start()
             workers = workersMutable.copy()
@@ -294,14 +306,16 @@ def do(func: Callable[..., Any], args: Optional[List[Any]] = None):
             finally:
                 spawnLock.release()
         else:
-            print("COULD NOT GET SPAWN LOCK TO CREATE ADDITIONAL THREAD. CONTINUING WITH FEWER THREADS. RESTART SUGGESTED")
+            print(
+                "COULD NOT GET SPAWN LOCK TO CREATE ADDITIONAL THREAD. CONTINUING WITH FEWER THREADS. RESTART SUGGESTED"
+            )
 
     # If we can't spawn a new thread
     # Wait a maximum of 15ms before
     # just giving up and leaving
     # it for when somethin
     # wakes up
-    for n in range(0, 25):
+    for n in range(25):
         if not taskQueue:
             return
         for i in wakeupHandles:
@@ -317,7 +331,7 @@ def do(func: Callable[..., Any], args: Optional[List[Any]] = None):
 do_try = do
 
 
-def start(count=8, qsize=64, shutdown_wait=60):
+def start(count=12, qsize=64, shutdown_wait=60):
     global __queue, run, worker_wait, workers, maxWorkers
     run = True
     worker_wait = shutdown_wait
