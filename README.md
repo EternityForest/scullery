@@ -1,11 +1,13 @@
 # scullery
 
-Python library that provides some core parts of KaithemAutomation, especially things related to media handling.
+Python library that provides some core parts of KaithemAutomation.  It's a general purpose
+utility library
 
 * Data persistance
-* Message bus
-* Thread pool worker(At one point, Python did not natively have this, may be deprecated now that it does)
-
+* Internal MQTT-like message bus
+* Thread pool workers
+* State Machines(With conditions and timers)
+* Scheduling, including repeating events
 * Media Handling and JACK now moved to [IceMedia](https://github.com/EternityForest/icemedia)
 
 ## Intro
@@ -104,7 +106,8 @@ def f():
 
 time.sleep(4)
 
-# You could delete f and it would go away, but lets not because
+# You could delete f and it would go away, but
+# lets close it properly.
 # del f
 f.unregister()
 
