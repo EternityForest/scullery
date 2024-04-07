@@ -1,7 +1,14 @@
 # SPDX-FileCopyrightText: Copyright Daniel Dunn
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"This file manages the kaithem global message bus that is used mostly for logging but also for many other tasks."
+"""
+This file manages global message bus.  Think of it as an internal version of MQTT.
+In fact, the same wildcard syntax as MQTT is supported.
+
+The global subscribe, unsubscribe, and post_message functions run subscribers in
+a background thread by default.
+
+"""
 
 import weakref
 import threading
@@ -11,7 +18,8 @@ import logging
 import inspect
 import types
 import copy
-from typing import Callable, Optional, Any, Set
+from typing import Any
+from collections.abc import Callable
 
 from typeguard import typechecked
 
@@ -28,11 +36,11 @@ log = logging.getLogger("system.messagebus")
 
 
 def normalize_topic(topic: str) -> str:
-    """"Because some topics are equivalent("/foo" and "foo"), this lets us convert them to the canonical "/foo" representation.
+    """ "Because some topics are equivalent("/foo" and "foo"), this lets us convert them to the canonical "/foo" representation.
     Note that "/foo/" is not the same as "/foo", because a trailing slash indicates a "directory"."""
     topic = topic.strip()
-    if not topic.startswith('/'):
-        return '/' + topic
+    if not topic.startswith("/"):
+        return "/" + topic
     else:
         return topic
 
@@ -41,79 +49,80 @@ def _shouldReRaiseAttrErr():
     return True
 
 
-def default_error_handler(*a):
-    print(traceback.format_exc())
+subscriber_error_handlers = []
 
 
-subscriberErrorHandlers = []
-
-
-def handle_error(f: Callable[..., Any], topic: str, value: Any):
+def _handle_error(f: Callable[..., Any], topic: str, value: Any):
     log.exception("Message bus subscriber error")
     if hasattr(f, "messagebusWrapperFor"):
         f = f.messagebusWrapperFor
-    for i in subscriberErrorHandlers:
+    for i in subscriber_error_handlers:
         try:
             i(f, topic, value)
         except Exception:
             print(traceback.format_exc())
 
 
-def run_function(f, a):
+def _run_function(f, a):
     return f(*a)
 
 
-class MessageBus(object):
-    def __init__(self, executor: Optional[Callable[..., Any]] = None):
-        """You pass this a function of one argument that just calls its argument. Defaults to calling in
-        same thread and ignoring errors.
+class MessageBus:
+    def __init__(self, executor: Callable[..., Any] | None = None):
+        """You pass this a function of one argument that just calls its argument.
+        Defaults to calling in same thread and ignoring errors.
+
+        If you pass it an executor, the executor must take a
+        callable and call it in a background thread.
+
         """
         if executor == None:
+
             def do(self, f: Callable[[], Any]):
                 try:
                     f()
                 except Exception:
                     pass
-            self.executor = do
-        else:
-            self.executor = executor
 
-        self.subscribers = defaultdict(list)
-        self.subscribers_immutable = {}
+            self._executor = do
+        else:
+            self._executor = executor
+
+        self._subscribers = defaultdict(list)
+        self._subscribers_immutable = {}
 
     @typechecked
     def subscribe(self, topic: str, callback: Callable[..., Any]):
         topic = normalize_topic(topic)
 
         with _subscribers_list_modify_lock:
-            wrappedCallback = self.wrap_callback(callback, topic)
+            wrappedCallback = self._wrap_callback(callback, topic)
 
-            self.subscribers[topic].append(wrappedCallback)
-            self.subscribers_immutable = copy.deepcopy(self.subscribers)
+            self._subscribers[topic].append(wrappedCallback)
+            self._subscribers_immutable = copy.deepcopy(self._subscribers)
 
     def unsubscribe(self, topic: str, function: Callable[..., Any]):
         "Unsubscribe topic from function"
         try:
             with _subscribers_list_modify_lock:
                 target = None
-                for j in self.subscribers[topic]:
+                for j in self._subscribers[topic]:
                     if j.originalFunction() == function:
                         target = j
                 if target:
-                    self.subscribers[topic].remove(target)
+                    self._subscribers[topic].remove(target)
                 else:
                     pass
         except Exception:
-            print(traceback.format_exception())
-            pass
+            print(traceback.format_exc())
         # There is a very slight chance someone will
         # Add something to topic before we delete it but after the test.
         # That would result in a canceled subscription
         # So we use this lock.
         try:
             with _subscribers_list_modify_lock:
-                if not self.subscribers[topic]:
-                    self.subscribers.pop(topic)
+                if not self._subscribers[topic]:
+                    self._subscribers.pop(topic)
         except AttributeError as e:
             # This try and if statement are supposed to catch nuisiance errors when shutting down.
             if _shouldReRaiseAttrErr():
@@ -121,11 +130,12 @@ class MessageBus(object):
 
         finally:
             with _subscribers_list_modify_lock:
-                self.subscribers_immutable = copy.deepcopy(self.subscribers)
+                self._subscribers_immutable = copy.deepcopy(self._subscribers)
 
     @staticmethod
-    def parse_topic(topic: str) -> Set[str]:
-        "Parse the topic string into a list of all subscriptions that could possibly match."
+    def parse_topic(topic: str) -> set[str]:
+        """Parse the topic string into a list of all the different subscriptions
+        that could possibly match, including wildcards"""
         global parsecache
         # Since this is a pure function(except the caching itself) we can cache it
         if topic in parsecache:
@@ -138,7 +148,7 @@ class MessageBus(object):
         # A topic foo/bar/baz would go to
         # foo, foo/bar, and /foo/bar/baz
         # So we need to make a list like that
-        matchingtopics = set(['/#'])
+        matchingtopics = {"/#"}
         parts = topic.split("/")
         last = ""
 
@@ -146,7 +156,7 @@ class MessageBus(object):
         matchingtopics.add(topic)
 
         for i in parts:
-            last += (i + '/')
+            last += i + "/"
             matchingtopics.add(last + "#")
         parsecache[oldtopic] = matchingtopics
         # Don't let the cache get too big.
@@ -156,7 +166,7 @@ class MessageBus(object):
         return matchingtopics
 
     @typechecked
-    def wrap_callback(self, f: Callable[..., Any], topic: str):
+    def _wrap_callback(self, f: Callable[..., Any], topic: str):
         """return function g that calls f with (topic,message) or just f(topic), depending
         on how many args there are.
          and if errors is true logs the error"""
@@ -166,7 +176,7 @@ class MessageBus(object):
         timestamp = time.monotonic()
 
         try:
-            desc = str(f.__name__ + ' of ' + f.__module__)
+            desc = str(f.__name__ + " of " + f.__module__)
         except Exception:
             desc = str(f)
 
@@ -181,11 +191,14 @@ class MessageBus(object):
         def delsubscription(weakrefobject):
             if time.monotonic() < timestamp - 0.5:
                 logging.warning(
-                    "Function: " + desc + " was deleted 0.5s after being subscribed.  This is probably not what you wanted.")
+                    "Function: "
+                    + desc
+                    + " was deleted 0.5s after being subscribed.  This is probably not what you wanted."
+                )
 
             try:
                 with _subscribers_list_modify_lock:
-                    self.subscribers[topic].remove(weakrefobject)
+                    self._subscribers[topic].remove(weakrefobject)
             except Exception:
                 pass
             # There is a very slight chance someone will
@@ -194,8 +207,8 @@ class MessageBus(object):
             # So we use this lock.
             try:
                 with _subscribers_list_modify_lock:
-                    if not self.subscribers[topic]:
-                        self.subscribers.pop(topic)
+                    if not self._subscribers[topic]:
+                        self._subscribers.pop(topic)
             except AttributeError as e:
                 # This try and if statement are supposed to catch nuisiance errors when shutting down.
                 if _shouldReRaiseAttrErr():
@@ -203,8 +216,7 @@ class MessageBus(object):
 
             finally:
                 with _subscribers_list_modify_lock:
-                    self.subscribers_immutable = copy.deepcopy(
-                        self.subscribers)
+                    self._subscribers_immutable = copy.deepcopy(self._subscribers)
 
         if isinstance(f, types.MethodType):
             f = weakref.WeakMethod(f, delsubscription)
@@ -214,6 +226,7 @@ class MessageBus(object):
         # Mutable object that gets saved to the closure for keeping track of if we already loggged this
         alreadyLogged = [False]
         if args == 0:
+
             def g(topic, message, errors, timestamp, annotation):
                 try:
                     f2 = f()
@@ -223,11 +236,13 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handle_error(f2, topic, message)
+                                global _handle_error
+                                _handle_error(f2, topic, message)
                             alreadyLogged[0] = True
                     except Exception as e:
                         print("err", e)
         elif args == 2:
+
             def g(topic, message, errors, timestamp, annotation):
                 try:
                     f2 = f()
@@ -237,12 +252,14 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handle_error(f2, topic, message)
+                                global _handle_error
+                                _handle_error(f2, topic, message)
                             alreadyLogged[0] = True
 
                     except Exception as e:
                         print("err", e)
         elif args == 4:
+
             def g(topic, message, errors, timestamp, annotation):
                 try:
                     f2 = f()
@@ -252,12 +269,14 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handle_error(f2, topic, message)
+                                global _handle_error
+                                _handle_error(f2, topic, message)
                             alreadyLogged[0] = True
 
                     except Exception as e:
                         print("err", e)
         elif args == 1:
+
             def g(topic, message, errors, timestamp, annotation):
                 try:
                     f2 = f()
@@ -267,13 +286,17 @@ class MessageBus(object):
                     try:
                         if errors:
                             if not alreadyLogged[0]:
-                                handle_error(f2, topic, message)
+                                global _handle_error
+                                _handle_error(f2, topic, message)
                             alreadyLogged[0] = True
                     except Exception as e:
                         print("err", e)
         else:
             raise ValueError(
-                "Invalid function signature(0,1,2, or 4 args supported, not " + str(args) + ")")
+                "Invalid function signature(0,1,2, or 4 args supported, not "
+                + str(args)
+                + ")"
+            )
 
         # Ref to the weakref so it's easy to check if the function we are wrapping
         # Still exists.
@@ -281,12 +304,11 @@ class MessageBus(object):
         return g
 
     def _post(self, topic, message, errors, timestamp, annotation, executor=None):
-
-        executor = executor or self.executor
+        executor = executor or self._executor
 
         matchingtopics = self.parse_topic(topic)
         # We can't iterate on anything that could possibly change so we make copies
-        d = self.subscribers_immutable
+        d = self._subscribers_immutable
         for i in matchingtopics:
             if i in d:
                 # When we find a match, we make a copy of that subscriber list
@@ -299,9 +321,18 @@ class MessageBus(object):
                     # We ignore both of these errors and move on
                     executor(f, (topic, message, errors, timestamp, annotation))
 
-    def post_message(self, topic: str, message: Any, errors: bool = True, timestamp: Optional[float] = None, annotation: Any = None, synchronous: bool = False):
+    def post_message(
+        self,
+        topic: str,
+        message: Any,
+        errors: bool = True,
+        timestamp: float | None = None,
+        annotation: Any = None,
+        synchronous: bool = False,
+    ):
         # Use the executor to run the post message job
         # To allow for the possibility of it running in the background as a thread
+        global _run_function
         topic = normalize_topic(topic)
         try:
             topic = str(topic)
@@ -309,8 +340,14 @@ class MessageBus(object):
             raise TypeError("Topic must be a string or castable to a string.")
 
         timestamp = timestamp or time.monotonic()
-        self._post(topic, message, errors, timestamp, annotation,
-                   run_function if synchronous else None)
+        self._post(
+            topic,
+            message,
+            errors,
+            timestamp,
+            annotation,
+            _run_function if synchronous else None,
+        )
 
 
 # Setup the default system messagebus

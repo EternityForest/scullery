@@ -61,7 +61,7 @@ Subscribe to a topic. Topics are a slash delimited heirarchy,a # at the end is a
 just like MQTT.
 
 
-#### scullery.messagebus.subscriberErrorHandlers  = []
+#### scullery.messagebus.subscriber_error_handlers  = []
 
 List of functions to be called whenever an error happens in a subscribed function.
 
@@ -128,4 +128,33 @@ gc.collect()
 
 # Should stop running because we deleted the class
 time.sleep(3)
+```
+
+## State Machines(Coming 0.16.0)
+
+
+```python
+import time
+import scullery.statemachines
+
+sm = scullery.statemachines.StateMachine("start")
+
+sm.add_state('start', exit=lambda: print('Exiting start state'))
+sm.add_state('state2', enter=lambda: print('Entering state 2'))
+sm.add_state('state3', enter=lambda: print('Entering state 3'))
+
+sm.add_rule('start', 'my_event', 'state2')
+sm.set_timer('state2', 2, 'state3')
+
+# Event triggered, now we are in state2
+# A timer is running in the background.
+sm.event('my_event')
+
+time.sleep(3)
+
+# The timer went off, now we are in state 3
+# Stateage returns a tuple of state, age
+# Where age is how long we've been in that state.
+print(sm.stateage)
+
 ```
