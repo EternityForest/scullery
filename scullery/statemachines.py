@@ -84,6 +84,8 @@ class StateMachine:
         self._time_offset = 0
 
         self.add_state("__closed__")
+        # Placeholder state
+        self.add_state(start)
 
     def __call__(self, event):
         "Trigger an event, return the current state"
