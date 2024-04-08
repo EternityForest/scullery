@@ -1,5 +1,10 @@
 # scullery
 
+![LGPL](badges/lgpl.png)
+![Python](badges/python.png)
+![Pytest](badges/pytest.png)
+![Pre-commit Badge](badges/pre-commit.png)
+
 Python library that provides some core parts of KaithemAutomation.  It's a general purpose
 utility library
 

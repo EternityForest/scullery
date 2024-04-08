@@ -61,7 +61,9 @@ class TestWorkers(unittest.TestCase):
         time.sleep(3)
         self.assertGreaterEqual(len(workers.workers), workers.minWorkers)
 
-        time.sleep(15)
+        for i in range(25):
+            if workers.workers:
+                time.sleep(1)
         # Workers should stop within 3s of inactivity, but we can only stop one at a time
         # every seconds
         self.assertEqual(len(workers.workers), 0)
