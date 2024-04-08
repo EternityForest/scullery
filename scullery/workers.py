@@ -2,10 +2,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 import threading
-import sys
 import traceback
 import logging
-import atexit
 import time
 import collections
 import random
@@ -23,7 +21,7 @@ backgroundFunctionErrorHandlers = []
 
 
 def testLatency():
-    start = time.monotonic()
+    start_time = time.monotonic()
     x = [0]
 
     def f():
@@ -31,10 +29,10 @@ def testLatency():
 
     do(f)
 
-    while time.monotonic() - start < 10:
+    while time.monotonic() - start_time < 10:
         time.sleep(0.0001)
         if x[0]:
-            return x[0] - start
+            return x[0] - start_time
     raise RuntimeError("No response")
 
 
@@ -180,7 +178,7 @@ def _makeWorker(e, q, id, fastMode=False):
                     # Randomize, so they don't all sync up
                     # FastMode polls at 100Hz
                     x = e.acquire(
-                        timeout=(random.random() * 2) if not fastMode else 0.01
+                        timeout=(random.random() * 1) if not fastMode else 0.01
                     )
                     runningState[0] = True
 
@@ -188,35 +186,31 @@ def _makeWorker(e, q, id, fastMode=False):
                     if not shouldRun:
                         return
 
-                    # Fast prelim check.
-                    if len(workers) > minWorkers:
+                    # Fast prelim check.  Allow going below min workers if no activity for 5s
+                    # Otherwise stay at min workers
+                    if (len(workers) > minWorkers) or (
+                        lastActivity < (monotonic() - 5)
+                    ):
                         # The elements of handle are never copied anywhere,
                         # Once the list is clear, we can be sure there is no further inserts, and the next round will catch almost
                         # all race conditions. Any remaining one in a million ones will be caught in 1 second
-                        if lastActivity < (monotonic() - 10):
+                        if lastActivity < (monotonic() - 1):
                             # This should not block.
                             if spawnLock.acquire(timeout=2):
                                 try:
-                                    if len(workers) > minWorkers:
-                                        # Only stop one thread per 5 seconds to prevent
+                                    if (len(workers) > minWorkers) or (
+                                        lastActivity < (monotonic() - 5)
+                                    ):
+                                        # Only stop one thread per second to prevent
                                         # chattering
 
-                                        # Also don't stop a thread when there aren't at least
-                                        # 2 threads that aren't busy.
-                                        unbusyCount = 0
-                                        for i in wakeupHandles:
-                                            if not i[1][0]:
-                                                unbusyCount += 1
-
-                                        if unbusyCount > 2 and lastStoppedThread < (
-                                            monotonic() - 5
-                                        ):
+                                        if lastStoppedThread < (monotonic() - 1):
                                             lastStoppedThread = monotonic()
-                                            shouldRun = None
                                             del workersMutable[id]
                                             workers = workersMutable.copy()
                                             wakeupHandlesMutable.remove(handle)
                                             wakeupHandles = wakeupHandlesMutable[:]
+                                            return
                                 finally:
                                     spawnLock.release()
             except Exception:
@@ -306,9 +300,7 @@ def do(func: Callable[..., Any], args: Optional[List[Any]] = None):
             finally:
                 spawnLock.release()
         else:
-            print(
-                "COULD NOT GET SPAWN LOCK TO CREATE ADDITIONAL THREAD. CONTINUING WITH FEWER THREADS. RESTART SUGGESTED"
-            )
+            print("COULD NOT GET SPAWN LOCK TO CREATE THREAD. RESTART SUGGESTED")
 
     # If we can't spawn a new thread
     # Wait a maximum of 15ms before
@@ -332,9 +324,9 @@ do_try = do
 
 
 def start(count=12, qsize=64, shutdown_wait=60):
-    global __queue, run, worker_wait, workers, maxWorkers
+    "Now just sets parameters, threads are made and destroyed on-demand"
+    global __queue, run, workers, maxWorkers
     run = True
-    worker_wait = shutdown_wait
 
     maxWorkers = count
 

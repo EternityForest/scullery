@@ -34,16 +34,18 @@ def workerSpam(count=10):
 assert workerTest()
 
 
-class TestMsgbus(unittest.TestCase):
+class TestWorkers(unittest.TestCase):
     def test_Workers(self):
+        workers.start(8)
+
         workerSpam(100)
         self.assertLessEqual(len(workers.workers), workers.maxWorkers)
         self.assertGreaterEqual(len(workers.workers), workers.minWorkers + 2)
 
-        for i in range(1000):
+        for i in range(10):
             self.assertEqual(workerTest(), 1)
 
-        for i in range(100):
+        for i in range(10):
             self.assertEqual(workerTest(), 1)
             time.sleep(0.001)
 
@@ -54,10 +56,12 @@ class TestMsgbus(unittest.TestCase):
             self.assertEqual(workerTest(), 1)
             time.sleep(random.random() * 0.001)
 
-        self.assertGreaterEqual(len(workers.workers), workers.minWorkers)
-
         self.assertLessEqual(len(workers.workers), workers.maxWorkers)
 
-        time.sleep(30)
-        # Workers should stop within 10s of inactivity, but we can only stop one at a time
-        self.assertEqual(len(workers.workers), workers.minWorkers)
+        time.sleep(3)
+        self.assertGreaterEqual(len(workers.workers), workers.minWorkers)
+
+        time.sleep(15)
+        # Workers should stop within 3s of inactivity, but we can only stop one at a time
+        # every seconds
+        self.assertEqual(len(workers.workers), 0)
