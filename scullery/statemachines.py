@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import threading
 import weakref
+
 from typeguard import typechecked
 from typing import Callable, Any
 from scullery import workers, util, scheduling
