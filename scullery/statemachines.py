@@ -6,7 +6,7 @@ import time
 import threading
 import weakref
 
-from typeguard import typechecked
+import beartype
 from typing import Callable, Any
 from scullery import workers, util, scheduling
 
@@ -215,7 +215,7 @@ class StateMachine:
             self._time_offset = t - pos
             self._configure_timer()
 
-    @typechecked
+    @beartype.beartype
     def add_state(
         self,
         name: str,
@@ -264,7 +264,7 @@ class StateMachine:
     def remove_state(self, name):
         raise RuntimeError("Not supported now")
 
-    @typechecked
+    @beartype.beartype
     def add_rule(self, start: str, event: str | Callable, to: str | Callable):
         """
         Add a rule to handle what should happen if event occurs while the machine is in state.

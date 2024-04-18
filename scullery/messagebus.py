@@ -21,7 +21,7 @@ import copy
 from typing import Any
 from collections.abc import Callable
 
-from typeguard import typechecked
+import beartype
 
 from . import workers
 from collections import defaultdict, OrderedDict
@@ -91,7 +91,7 @@ class MessageBus:
         self._subscribers = defaultdict(list)
         self._subscribers_immutable = {}
 
-    @typechecked
+    @beartype.beartype
     def subscribe(self, topic: str, callback: Callable[..., Any]):
         topic = normalize_topic(topic)
 
@@ -165,7 +165,7 @@ class MessageBus:
             parsecache.popitem(last=False)
         return matchingtopics
 
-    @typechecked
+    @beartype.beartype
     def _wrap_callback(self, f: Callable[..., Any], topic: str):
         """return function g that calls f with (topic,message) or just f(topic), depending
         on how many args there are.

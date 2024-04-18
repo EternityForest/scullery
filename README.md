@@ -184,3 +184,49 @@ time.sleep(3)
 print(sm.stateage)
 
 ```
+
+## Rate Limiting(0.17.0 and up)
+
+```python
+import scullery.ratelimits
+
+# 1hz average, up to max burst of 50
+rl = scullery.ratelimits.RateLimiter(hz=1, burst=50)
+
+for i in range(100):
+    # Returns number of credits remaining.
+    # They refill at the given hz rate up to the burst limit
+
+    if not rl.limit():
+        raise RuntimeError("No rate limiter credits remaining")
+```
+
+## snake_compat(0.17.0 and up)
+
+This module converts between snake_case, camelCase, and kebeb-case.
+
+It can do so for one string, or it can make a shallow copy of a dict
+with all the keys converted and values untouched.
+
+```python
+
+# Example only, * imports are bad!
+from scullery.snake_compat import *
+
+# def camel_to_kebab(s: str) -> str:
+
+# def kebab_to_snake(s: str):
+
+# def snake_to_kebab(s: str):
+
+# def snake_to_camel(s: str):
+
+# def camel_to_snake(s: str):
+
+# def snakify_dict_keys(d: Dict[str, Any]) -> Dict[str, Any]:
+
+
+# def kebabify_dict_keys(d: Dict[str, Any]) -> Dict[str, Any]:
+
+# def camelify_dict_keys(d: Dict[str, Any]) -> Dict[str, Any]:
+```
