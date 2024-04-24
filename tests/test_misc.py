@@ -1,9 +1,15 @@
 import unittest
 from scullery import mnemonics
 from scullery import units
+from scullery import snake_compat
 
 
 class TestMisc(unittest.TestCase):
+    def test_snake_compat(self):
+        assert snake_compat.camel_to_snake("camelCase") == "camel_case"
+        assert snake_compat.camel_to_snake("/camelCase") == "/camel_case"
+        assert snake_compat.snake_to_camel("camel_case") == "camelCase"
+
     def test_wordlist(self):
         self.assertEqual(len(mnemonics.wordlist), 1633)
 

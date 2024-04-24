@@ -28,7 +28,15 @@ def snake_to_camel(s: str):
 
 
 def camel_to_snake(s: str):
-    return "".join(["_" + c.lower() if c.isupper() else c for c in s]).lstrip("_")
+    s2 = ""
+    last = "a"
+    for i in s:
+        if last.isalpha() and not last.isupper():
+            if i.isupper():
+                s2 += "_" + i.lower()
+                continue
+        s2 += i.lower()
+    return s2
 
 
 def snakify_dict_keys(d: Dict[str, Any]) -> Dict[str, Any]:
