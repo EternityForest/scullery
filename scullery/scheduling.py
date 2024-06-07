@@ -62,7 +62,7 @@ import sched
 import traceback
 import logging
 import types
-from typing import Any
+from typing import Any, overload
 from collections.abc import Callable
 
 from scullery import workers, util
@@ -366,6 +366,18 @@ class RepeatWhileEvent(RepeatingEvent):
                 del f
 
 
+class WrappedFunction:
+    def __init__(self, f, e: RepeatingEvent):
+        self.f = f
+        self.e = e
+
+    def __call__(self, *a, **k):
+        return self.f(*a, **k)
+
+    def unregister(self):
+        self.e.unregister()
+
+
 class NewScheduler:
     """
     represents a thread that constantly runs tasks which are objects having a time property that determins when
@@ -401,21 +413,31 @@ class NewScheduler:
             self.thread.start()
             self.thread2.start()
 
-    def every_second(self, f: Callable[[], Any]):
+    def every_second(self, f: Callable[[], Any]) -> WrappedFunction:
         """Run the callable f at the specified interval.
         Can be used as a decorator"""
-        return self.every(f, 1)
+        return self.every(f, 1)  # type: ignore
 
-    def every_minute(self, f: Callable[[], Any]):
-        return self.every(f, 60)
+    def every_minute(self, f: Callable[[], Any]) -> WrappedFunction:
+        return self.every(f, 60)  # type: ignore
 
-    def every_hour(self, f: Callable[[], Any]):
-        return self.every(f, 3600)
+    def every_hour(self, f: Callable[[], Any]) -> WrappedFunction:
+        return self.every(f, 3600)  # type: ignore
 
-    def every(self, f: Callable[[], Any] | float, interval: float = 0):
+    @overload
+    def every(
+        self, interval: float = 0
+    ) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
+        pass
+
+    @overload
+    def every(self, f: Callable[[], Any], interval: float = 0) -> WrappedFunction:
+        pass
+
+    def every(self, f: Callable[[], Any] | float, interval: float = 0):  # type: ignore
         """Overloaded:
         every(interval) returns a decorator
-        every(function, interval) calls the function.
+        every(function, interval) calls the function
 
         The decorated or registered function will have an unregister() added,
         And it will also go away if you don't keep a reference to it.
@@ -449,8 +471,7 @@ class NewScheduler:
 
             else:
                 f2 = f
-            f2.unregister = lambda: e.unregister()
-            return f2
+            return WrappedFunction(f2, e)
 
     def schedule(self, f: Callable[[], Any], t: float, exact=False):
         t = float(t)
