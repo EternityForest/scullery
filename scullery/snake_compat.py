@@ -29,12 +29,13 @@ def snake_to_camel(s: str):
 
 def camel_to_snake(s: str):
     s2 = ""
-    last = "a"
+    last = ""
     for i in s:
         if last.isalpha() and not last.isupper():
             if i.isupper():
                 s2 += "_" + i.lower()
                 continue
+        last = i
         s2 += i.lower()
     return s2
 

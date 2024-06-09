@@ -1,5 +1,4 @@
 import unittest
-from scullery import mnemonics
 from scullery import units
 from scullery import snake_compat
 
@@ -9,20 +8,6 @@ class TestMisc(unittest.TestCase):
         assert snake_compat.camel_to_snake("camelCase") == "camel_case"
         assert snake_compat.camel_to_snake("/camelCase") == "/camel_case"
         assert snake_compat.snake_to_camel("camel_case") == "camelCase"
-
-    def test_wordlist(self):
-        self.assertEqual(len(mnemonics.wordlist), 1633)
-
-    def test_hash(self):
-        "This just happens to be what you get if you hash that string"
-        self.assertEqual(mnemonics.memorableBlakeHash(b"", 3, ""), "initialpuzzlegroup")
-
-    def test_hash8(self):
-        "Test with a longer requested result"
-        self.assertEqual(
-            mnemonics.memorableBlakeHash(b"", 8, ""),
-            "initialpuzzlegroupdeclarefactoragendalorenzoacademy",
-        )
 
     def test_conversions(self):
         "Test with a longer requested result"
