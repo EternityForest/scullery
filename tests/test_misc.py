@@ -5,6 +5,7 @@ from scullery import snake_compat
 
 class TestMisc(unittest.TestCase):
     def test_snake_compat(self):
+        assert snake_compat.camel_to_snake("CamelCase") == "camel_case"
         assert snake_compat.camel_to_snake("camelCase") == "camel_case"
         assert snake_compat.camel_to_snake("/camelCase") == "/camel_case"
         assert snake_compat.snake_to_camel("camel_case") == "camelCase"
