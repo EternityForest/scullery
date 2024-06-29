@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scullery"
-version = "0.1.19"
+version = "0.2.0"
 description = "A utility library based on KaithemAutomation featuring a GStreamer wrapper"
 authors = ["Daniel Dunn <dannydunn@eternityforest.com>"]
 license = "LGPLv2+"

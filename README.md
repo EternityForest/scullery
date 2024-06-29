@@ -69,7 +69,7 @@ foo.
 
 messages may be any python object at all.
 
-The timestamp will be set to time.monotonic() if it is None.
+The timestamp will be set to time.time() if it is None.
 
 Annotation is used for sending "extra" or "hidden" metadata, usually for preventing loops. It defaults to None.
 

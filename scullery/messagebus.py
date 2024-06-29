@@ -173,7 +173,7 @@ class MessageBus:
 
         args = len(inspect.signature(f).parameters)
 
-        timestamp = time.monotonic()
+        timestamp = time.time()
 
         try:
             desc = str(f.__name__ + " of " + f.__module__)
@@ -189,12 +189,8 @@ class MessageBus:
         # To have no subscribers, delete that too in case of memory leak.
 
         def delsubscription(weakrefobject):
-            if time.monotonic() < timestamp - 0.5:
-                logging.warning(
-                    "Function: "
-                    + desc
-                    + " was deleted 0.5s after being subscribed.  This is probably not what you wanted."
-                )
+            if time.time() < timestamp - 0.5:
+                logging.warning("Function: " + desc + " was deleted 0.5s after being subscribed.  This is probably not what you wanted.")
 
             try:
                 with _subscribers_list_modify_lock:
@@ -292,11 +288,7 @@ class MessageBus:
                     except Exception as e:
                         print("err", e)
         else:
-            raise ValueError(
-                "Invalid function signature(0,1,2, or 4 args supported, not "
-                + str(args)
-                + ")"
-            )
+            raise ValueError("Invalid function signature(0,1,2, or 4 args supported, not " + str(args) + ")")
 
         # Ref to the weakref so it's easy to check if the function we are wrapping
         # Still exists.
@@ -339,7 +331,7 @@ class MessageBus:
         except Exception:
             raise TypeError("Topic must be a string or castable to a string.")
 
-        timestamp = timestamp or time.monotonic()
+        timestamp = timestamp or time.time()
         self._post(
             topic,
             message,
