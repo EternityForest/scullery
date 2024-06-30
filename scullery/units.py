@@ -118,14 +118,10 @@ def define_unit(unitname, multiplier, type, offset=0, base=None):
         if isinstance(z, (int, float)):
             multiplier *= z
         else:
-            raise RuntimeError(
-                "Function-based units can only be defined directly in terms of the global base"
-            )
+            raise RuntimeError("Function-based units can only be defined directly in terms of the global base")
 
         if not isinstance(multiplier, (int, float)):
-            raise RuntimeError(
-                "Function-based units can only be defined directly in terms of the global base"
-            )
+            raise RuntimeError("Function-based units can only be defined directly in terms of the global base")
 
     if isinstance(multiplier, (int, float)):
         multiplier = multiplier
@@ -206,25 +202,25 @@ def si_format_number(number: float, digits=2) -> str:
     if number == 0:
         return "0"
     if number > 10**15:
-        return str(iround(number / 1000000000000000.0, digits)) + "P"
+        return str(iround(number / 1_000_000_000_000_000.0, digits)) + "P"
     if number > 10**12:
-        return str(iround(number / 1000000000000.0, digits)) + "T"
-    if number > 1000000000:
-        return str(iround(number / 1000000000.0, digits)) + "G"
-    if number > 1000000:
-        return str(iround(number / 1000000.0, digits)) + "M"
+        return str(iround(number / 1_000_000_000_000.0, digits)) + "T"
+    if number > 1_000_000_000:
+        return str(iround(number / 1000_000_000.0, digits)) + "G"
+    if number > 1_000_000:
+        return str(iround(number / 1_000_000.0, digits)) + "M"
     if number > 1000:
         return str(iround(number / 1000.0, digits)) + "K"
     if number < 10**-12:
         return str(round(number * (10**-15), digits)) + "f"
     if number < 10**-9:
-        return str(round(number * 1000000000000.0, digits)) + "p"
+        return str(round(number * 1_000_000_000_000.0, digits)) + "p"
     if number < 10**-6:
-        return str(iround(number * 1000000000.0, digits)) + "n"
+        return str(iround(number * 1_000_000_000.0, digits)) + "n"
     if number < 0.001:
-        return str(iround(number * 1000000.0, digits)) + "u"
+        return str(iround(number * 1_000_000.0, digits)) + "u"
     if number < 0.5:
-        return str(iround(number * 1000.0, digits)) + "m"
+        return str(iround(number * 1_000.0, digits)) + "m"
     return str(iround(number, digits))
 
 

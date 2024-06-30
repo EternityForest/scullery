@@ -20,6 +20,14 @@ class TestMisc(unittest.TestCase):
         # Milli-inches?
         self.assertAlmostEqual(units.convert(1, "ft", "min"), 12000)
 
+        self.assertEqual(units.si_format_number(12), "12")
+        self.assertEqual(units.si_format_number(2000), "2K")
+        self.assertEqual(units.si_format_number(2000_000), "2M")
+        self.assertEqual(units.si_format_number(2000_000_000), "2G")
+        self.assertEqual(units.si_format_number(1 / 1000), "1m")
+        self.assertEqual(units.si_format_number(1 / 1000_000), "1u")
+        self.assertEqual(units.si_format_number(1 / 1000_000_000), "1n")
+
     def test_nonsense_convert(self):
         with self.assertRaises(Exception):
             units.convert("80", "trashpiles", "garbages")

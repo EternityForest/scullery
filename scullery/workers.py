@@ -144,25 +144,15 @@ def _makeWorker(e, q, id, fastMode=False):
                                     )
                                     lastWorkersError = monotonic()
 
-                                logger.exception(
-                                    "Error in function running in thread pool "
-                                    + f[0].__name__
-                                    + " from "
-                                    + f[0].__module__
-                                )
+                                logger.exception("Error in function running in thread pool " + f[0].__name__ + " from " + f[0].__module__)
                             except Exception:
-                                print(
-                                    "Failed to handle error: " + traceback.format_exc(6)
-                                )
+                                print("Failed to handle error: " + traceback.format_exc(6))
 
                             for i in backgroundFunctionErrorHandlers:
                                 try:
                                     i(f)
                                 except Exception:
-                                    print(
-                                        "Failed to handle error: "
-                                        + traceback.format_exc(6)
-                                    )
+                                    print("Failed to handle error: " + traceback.format_exc(6))
                         finally:
                             # We do not want f staying around, if might hold references that should be GCed away immediatly
                             f = None
@@ -177,42 +167,36 @@ def _makeWorker(e, q, id, fastMode=False):
                 if not taskQueue:
                     # Randomize, so they don't all sync up
                     # FastMode polls at 100Hz
-                    x = e.acquire(
-                        timeout=(random.random() * 1) if not fastMode else 0.01
-                    )
+                    x = e.acquire(timeout=(random.random() * 1) if not fastMode else 0.01)
                     runningState[0] = True
 
-                if not x and not taskQueue:
-                    if not shouldRun:
-                        return
+                    if not x:
+                        if not shouldRun:
+                            return
 
-                    # Fast prelim check.  Allow going below min workers if no activity for 5s
-                    # Otherwise stay at min workers
-                    if (len(workers) > minWorkers) or (
-                        lastActivity < (monotonic() - 5)
-                    ):
-                        # The elements of handle are never copied anywhere,
-                        # Once the list is clear, we can be sure there is no further inserts, and the next round will catch almost
-                        # all race conditions. Any remaining one in a million ones will be caught in 1 second
-                        if lastActivity < (monotonic() - 1):
-                            # This should not block.
-                            if spawnLock.acquire(timeout=2):
-                                try:
-                                    if (len(workers) > minWorkers) or (
-                                        lastActivity < (monotonic() - 5)
-                                    ):
-                                        # Only stop one thread per second to prevent
-                                        # chattering
+                        # Fast prelim check.  Allow going below min workers if no activity for 5s
+                        # Otherwise stay at min workers
+                        if (len(workers) > minWorkers) or (lastActivity < (monotonic() - 5)):
+                            # The elements of handle are never copied anywhere,
+                            # Once the list is clear, we can be sure there is no further inserts, and the next round will catch almost
+                            # all race conditions. Any remaining one in a million ones will be caught in 1 second
+                            if lastActivity < (monotonic() - 1):
+                                # This should not block.
+                                if spawnLock.acquire(timeout=2):
+                                    try:
+                                        if (len(workers) > minWorkers) or (lastActivity < (monotonic() - 5)):
+                                            # Only stop one thread per second to prevent
+                                            # chattering
 
-                                        if lastStoppedThread < (monotonic() - 1):
-                                            lastStoppedThread = monotonic()
-                                            del workersMutable[id]
-                                            workers = workersMutable.copy()
-                                            wakeupHandlesMutable.remove(handle)
-                                            wakeupHandles = wakeupHandlesMutable[:]
-                                            return
-                                finally:
-                                    spawnLock.release()
+                                            if lastStoppedThread < (monotonic() - 2):
+                                                lastStoppedThread = monotonic()
+                                                del workersMutable[id]
+                                                workers = workersMutable.copy()
+                                                wakeupHandlesMutable.remove(handle)
+                                                wakeupHandles = wakeupHandlesMutable[:]
+                                                return
+                                    finally:
+                                        spawnLock.release()
             except Exception:
                 print("Exception in worker loop: " + traceback.format_exc(6))
 
