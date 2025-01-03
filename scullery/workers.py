@@ -313,5 +313,3 @@ def start(count=12, qsize=64, shutdown_wait=60):
     run = True
 
     maxWorkers = count
-
-    syslogger.info("Started worker threads")

@@ -8,8 +8,10 @@ It can convert both strings and dict keys.
 # https://stackoverflow.com/a/44969381/2360612
 
 from typing import Dict, Any
+from functools import lru_cache
 
 
+@lru_cache(maxsize=64)
 def camel_to_kebab(s: str) -> str:
     return "".join(["_" + c.lower() if c.isupper() else c for c in s]).lstrip("_")
 
@@ -22,11 +24,13 @@ def snake_to_kebab(s: str):
     return s.replace("-", "_")
 
 
+@lru_cache(maxsize=64)
 def snake_to_camel(s: str):
     temp = s.split("_")
     return temp[0] + "".join(ele.title() for ele in temp[1:])
 
 
+@lru_cache(maxsize=64)
 def camel_to_snake(s: str):
     s2 = ""
     last = ""
@@ -38,6 +42,21 @@ def camel_to_snake(s: str):
         last = i
         s2 += i.lower()
     return s2
+
+
+@lru_cache(maxsize=64)
+def any_to_snake(s: str):
+    return camel_to_snake(kebab_to_snake(s))
+
+
+@lru_cache(maxsize=64)
+def any_to_camel(s: str):
+    return snake_to_camel(kebab_to_snake(s))
+
+
+@lru_cache(maxsize=64)
+def any_to_kebab(s: str):
+    return snake_to_kebab(camel_to_kebab(s))
 
 
 def snakify_dict_keys(d: Dict[str, Any]) -> Dict[str, Any]:

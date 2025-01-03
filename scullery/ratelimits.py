@@ -9,13 +9,18 @@ class RateLimiter:
     "credits" for fast bursts.
     """
 
-    def __init__(self, hz: float, burst=250) -> None:
+    def __init__(self, hz: float, burst: float = 250) -> None:
         """The rate limiter will begin with accum_limit credits and
         cannot go above that.  rate is in number of credits added per second.
         """
         self.rate = hz
+        # The max number of credits we can accumulate
         self.accum_limit = burst
+        # The current number of credits
         self.current_limit = burst
+
+        # The last time we were called
+        # and calculated credits
         self.timestamp = time.monotonic()
 
     def limit(self) -> float:
@@ -27,6 +32,7 @@ class RateLimiter:
         elapsed = time.monotonic() - self.timestamp
         self.current_limit += self.rate * elapsed
         self.current_limit = min(self.current_limit, self.accum_limit)
+        self.timestamp = time.monotonic()
         if self.current_limit >= 1:
             self.current_limit -= 1
             return self.current_limit
