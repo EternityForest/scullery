@@ -5,7 +5,6 @@ import stat
 import io
 import sys
 import os
-import weakref
 import threading
 import gzip
 import bz2
@@ -16,52 +15,31 @@ import hashlib
 import threading
 
 posix_rename = False
-if sys.platform.startswith('linux'):
+if sys.platform.startswith("linux"):
     posix_rename = True
-if sys.platform.startswith('darwin'):
+if sys.platform.startswith("darwin"):
     posix_rename = True
-
-# Purely just a dict for the rest of the application to keep track of what files are changed and not saved.
-unsavedFiles = {}
 
 
 def resolve_path(fn, expand=True):
     if not expand:
         return fn
-    return (os.path.expandvars(os.path.expanduser(fn)))
+    return os.path.expandvars(os.path.expanduser(fn))
 
 
 # TODO: Ensure only one thread can save a file at a time
 strio = io.BytesIO
 
-persisters = []
-
 # must be Rlock because load is recursive
 lock = threading.RLock()
-
-
-def saveExecutor(f):
-    "Replace this with something that can call f with no args"
-    f()
-
-
-def saveAllAtExit():
-    while persisters:
-        i = persisters.pop()()
-        try:
-            i.save()
-        except Exception:
-            logging.exception("err")
 
 
 def chmod_private_try(p, execute=True):
     try:
         if execute:
-            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
-                     stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP)
+            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP)
         else:
-            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR |
-                     stat.S_IRGRP | stat.S_IWGRP)
+            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
     except Exception as e:
         raise e
 
@@ -72,47 +50,21 @@ def ensure_dir(f):
         os.makedirs(d)
 
 
-class Persister():
-    def __init__(self, fn, default=None):
-        self.fn = fn
-        try:
-            self.reload()
-        except Exception:
-            self.value = default
-        torm = []
-        # Before we add ourselves, clear out any old persisters that are no longer needed.
-        for i in persisters:
-            if not i():
-                torm.append(i)
-        for i in torm:
-            persisters.remove(i)
-
-        persisters.append(weakref.ref(self))
-
-    def save(self):
-        save(self.value, self.fn, backup=True)
-
-    def reload(self):
-        if os.path.exists(self.fn):
-            self.value = load(self.fn)
-
-
 def save(data, fn, *, private=False, backup=True, expand=True, md5=False, nolog=False):
     """Save data to file. Filename must end in .json, .yaml, .txt, or .bin. Data will be encoded appropriately.
-        Also supports compressed versions via filenames ending in .gz or .bz2.
-        Args:
-            data:
-                the data to be written. if fn is a .json or .yaml, must be serializable. If filename is .txt, must be a string.
-                If .bin, must be something like bytes.
-            private:
-                If True, file created with mode 700(Full access to root and owner but not even read to anyone else)
-                If False(the default), file created with default mode
-            backup:
-                Setting this to true is an alias for mode="backup"
+    Also supports compressed versions via filenames ending in .gz or .bz2.
+    Args:
+        data:
+            the data to be written. if fn is a .json or .yaml, must be serializable. If filename is .txt, must be a string.
+            If .bin, must be something like bytes.
+        private:
+            If True, file created with mode 700(Full access to root and owner but not even read to anyone else)
+            If False(the default), file created with default mode
+        backup:
+            Setting this to true is an alias for mode="backup"
     """
     fn = resolve_path(fn, expand)
     with lock:
-
         # Make sure we don't overwrite a file when we create our dirs, because that behavior is undocumented in makedirs.
         x = os.path.split(fn)[0]
         already = {}
@@ -120,8 +72,7 @@ def save(data, fn, *, private=False, backup=True, expand=True, md5=False, nolog=
         # Safety counter to stop really wierd loops
         for i in range(64):
             if os.path.isfile(x):
-                raise RuntimeError(
-                    "Required intermediate directory is already present as a file, refusing to overwrite file")
+                raise RuntimeError("Required intermediate directory is already present as a file, refusing to overwrite file")
             x = os.path.split(x)[0]
             # Loop prevention
             if x in already:
@@ -135,8 +86,7 @@ def save(data, fn, *, private=False, backup=True, expand=True, md5=False, nolog=
                 os.makedirs(os.path.dirname(fn))
 
         if os.path.isdir(fn):
-            raise RuntimeError(
-                "Filename is already present as a directory, refusing to overwrite directory")
+            raise RuntimeError("Filename is already present as a directory, refusing to overwrite directory")
         # Get base type without compression
         if fn.endswith(".gz"):
             x = fn[:-3]
@@ -146,27 +96,29 @@ def save(data, fn, *, private=False, backup=True, expand=True, md5=False, nolog=
             x = fn
         # Encode the data into our chosen format
         if x.endswith(".json"):
-            data = json.dumps(data).encode('utf8')
+            data = json.dumps(data).encode("utf8")
         elif x.endswith(".yaml"):
             import yaml
-            data = yaml.dump(data).encode('utf8')
+
+            data = yaml.dump(data).encode("utf8")
 
         elif x.endswith(".toml"):
             import toml
+
             data = toml.dumps(data).encode("utf8")
 
-        elif x.endswith(".txt") or x.endswith(".md") or x.endswith(".rst"):
-            data = (str(data).encode('utf8'))
+        elif x.endswith((".txt", ".md", ".rst")):
+            data = str(data).encode("utf8")
         elif x.endswith(".bin"):
-            data = (data)
+            data = data
         else:
-            raise ValueError('Unsupported or missing File Extension')
+            raise ValueError("Unsupported or missing File Extension")
 
         # We have selected a compressed type. Compress in-memory first so we can read-before-write
         # Note that disk access is slow enough the call to  basically makes no difference in speed here if it's already imported
         if fn.endswith(".gz"):
             i = strio()
-            f = gzip.GzipFile(fn, mode='wb', fileobj=i)
+            f = gzip.GzipFile(fn, mode="wb", fileobj=i)
             f.write(data)
             f.close()
             data = i.getvalue()
@@ -186,15 +138,14 @@ def save(data, fn, *, private=False, backup=True, expand=True, md5=False, nolog=
         ensure_dir(os.path.split(fn)[0])
 
         if backup:
-            tempfn = fn+str(time.time())
+            tempfn = fn + str(time.time())
         else:
             tempfn = fn
 
         if not nolog:
-            logging.debug("Writing: "+fn)
+            logging.debug("Writing: " + fn)
         # Actually write it
-        with open(tempfn, 'wb') as f:
-
+        with open(tempfn, "wb") as f:
             # In backup mode, pre truncate and flush.
             # This means that even if an error occors during writing, we will be able to tell by the
             # mtime that the tilde file is the right one.
@@ -229,31 +180,33 @@ def load(filename, *, expand=True):
         try:
             # Open the file and get the filename without the compression type attached to it.
             if filename.endswith(".gz"):
-                f = gzip.GzipFile(filename, mode='rb')
+                f = gzip.GzipFile(filename, mode="rb")
                 x = filename[:-3]
             elif filename.endswith(".bz2"):
                 x = filename[:-4]
-                f = bz2.BZ2File(filename, mode='rb')
+                f = bz2.BZ2File(filename, mode="rb")
             else:
-                f = open(filename, 'rb')
+                f = open(filename, "rb")
                 x = filename
 
             if x.endswith(".json"):
-                r = json.loads(f.read().decode('utf8'))
+                r = json.loads(f.read().decode("utf8"))
             elif x.endswith(".yaml"):
                 import yaml
-                r = yaml.load(f.read().decode('utf8'), Loader=yaml.SafeLoader)
+
+                r = yaml.load(f.read().decode("utf8"), Loader=yaml.SafeLoader)
 
             elif x.endswith(".toml"):
                 import toml
-                r = toml.loads(f.read().decode('utf8'))
 
-            elif x.endswith(".txt") or x.endswith(".md") or x.endswith(".rst"):
-                r = f.read().decode('utf8')
+                r = toml.loads(f.read().decode("utf8"))
+
+            elif x.endswith((".txt", ".md", ".rst")):
+                r = f.read().decode("utf8")
             elif x.endswith(".bin"):
                 r = f.read()
             else:
-                raise ValueError('Unsupported File Extension')
+                raise ValueError("Unsupported File Extension")
         except Exception as e:
             try:
                 f.close()

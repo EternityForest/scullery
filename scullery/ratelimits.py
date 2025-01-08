@@ -30,6 +30,9 @@ class RateLimiter:
         Credits refill at "rate" per second up to a max of accum_limit
         """
         elapsed = time.monotonic() - self.timestamp
+
+        # Monotonic can go backwards with time travel testing
+        elapsed = max(0.0, elapsed)
         self.current_limit += self.rate * elapsed
         self.current_limit = min(self.current_limit, self.accum_limit)
         self.timestamp = time.monotonic()
