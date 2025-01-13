@@ -61,7 +61,6 @@ def handle_errorInFunction(f):
 
 def stop():
     global run
-    logging.info("Stopping worker threads")
     run = False
 
 
