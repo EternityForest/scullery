@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scullery"
-version = "0.3.0"
+version = "0.3.1"
 description = "A utility library based on KaithemAutomation featuring a GStreamer wrapper"
 authors = ["Daniel Dunn <dannydunn@eternityforest.com>"]
 license = "LGPLv2+"
@@ -17,6 +17,8 @@ pyyaml = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
+handsdown = "^2.1.0"
+
 
 [tool.ruff]
 line-length = 140
