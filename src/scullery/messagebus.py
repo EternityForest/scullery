@@ -21,7 +21,7 @@ import copy
 from typing import Any
 from collections.abc import Callable
 
-import beartype
+from pydantic import validate_call
 
 from . import workers
 from collections import defaultdict, OrderedDict
@@ -91,7 +91,7 @@ class MessageBus:
         self._subscribers = defaultdict(list)
         self._subscribers_immutable = {}
 
-    @beartype.beartype
+    @validate_call
     def subscribe(self, topic: str, callback: Callable[..., Any]):
         topic = normalize_topic(topic)
 
@@ -165,7 +165,7 @@ class MessageBus:
             parsecache.popitem(last=False)
         return matchingtopics
 
-    @beartype.beartype
+    @validate_call
     def _wrap_callback(self, f: Callable[..., Any], topic: str):
         """return function g that calls f with (topic,message) or just f(topic), depending
         on how many args there are.

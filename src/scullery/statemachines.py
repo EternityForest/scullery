@@ -6,7 +6,8 @@ import time
 import threading
 import weakref
 
-import beartype
+from pydantic import validate_call
+
 from typing import Any
 from collections.abc import Callable
 from scullery import workers, util, scheduling
@@ -115,11 +116,7 @@ class StateMachine:
             # First clean up old subscribers. This is slow to do thi every time, but it should be infrequent.
             for i in self._subscribers:
                 self._subscribers[i] = [i for i in self._subscribers[state] if i()]
-            self._subscribers = {
-                i: self._subscribers[i]
-                for i in self._subscribers
-                if self._subscribers[i]
-            }
+            self._subscribers = {i: self._subscribers[i] for i in self._subscribers if self._subscribers[i]}
 
             if state not in self._subscribers:
                 self._subscribers[state] = []
@@ -135,11 +132,7 @@ class StateMachine:
         with self.lock:
             for i in self._subscribers:
                 self._subscribers[i] = [i for i in self._subscribers[state] if i()]
-            self._subscribers = {
-                i: self._subscribers[i]
-                for i in self._subscribers
-                if self._subscribers[i]
-            }
+            self._subscribers = {i: self._subscribers[i] for i in self._subscribers if self._subscribers[i]}
 
             torm = None
             for i in self._subscribers[state]:
@@ -166,9 +159,7 @@ class StateMachine:
         "Poll function for any timers on the state."
         with self.lock:
             if self.states[self.state].get("timer"):
-                if (
-                    (time.time() + self._time_offset) - self.entered_state
-                ) > self.states[self.state]["timer"][0]:
+                if ((time.time() + self._time_offset) - self.entered_state) > self.states[self.state]["timer"][0]:
                     # Get the destination
                     x = self.states[self.state]["timer"][1]
 
@@ -192,9 +183,7 @@ class StateMachine:
         # If for any reason we get here too early, let's just keep rescheduling
         if self.states[self.state].get("timer"):
             # If we haven't already passed the time of the timer
-            if ((time.time() + self._time_offset) - self.entered_state) < self.states[
-                self.state
-            ]["timer"][0]:
+            if ((time.time() + self._time_offset) - self.entered_state) < self.states[self.state]["timer"][0]:
                 f = makechecker(util.universal_weakref(self))
                 self.schedulerobj = scheduling.scheduler.schedule(f, time.time() + 0.08)
 
@@ -216,7 +205,7 @@ class StateMachine:
             self._time_offset = t - pos
             self._configure_timer()
 
-    @beartype.beartype
+    @validate_call
     def add_state(
         self,
         name: str,
@@ -265,7 +254,7 @@ class StateMachine:
     def remove_state(self, name):
         raise RuntimeError("Not supported now")
 
-    @beartype.beartype
+    @validate_call
     def add_rule(self, start: str, event: str | Callable, to: str | Callable):
         """
         Add a rule to handle what should happen if event occurs while the machine is in state.
@@ -370,9 +359,7 @@ class StateMachine:
             del self.pollingscheduledfunction
 
         if self.states[self.state].get("conditions"):
-            self.pollingscheduledfunction = scheduling.scheduler.every(
-                self.check, 1 / 24
-            )
+            self.pollingscheduledfunction = scheduling.scheduler.every(self.check, 1 / 24)
 
     def _goto(self, state):
         "Must be called under the lock"
@@ -398,9 +385,7 @@ class StateMachine:
 
         if self.states[self.state].get("timer"):
             f = makechecker(util.universal_weakref(self))
-            self.schedulerobj = scheduling.scheduler.schedule(
-                f, time.time() + self.states[self.state].get("timer")[0]
-            )
+            self.schedulerobj = scheduling.scheduler.schedule(f, time.time() + self.states[self.state].get("timer")[0])
 
             # Keep a strong reference
             self.schedulerobj.func_ref = f  # type: ignore

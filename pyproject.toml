@@ -1,23 +1,26 @@
-[tool.poetry]
+[project]
 name = "scullery"
-version = "0.3.1"
+version = "0.4.0"
 description = "A utility library based on KaithemAutomation featuring a GStreamer wrapper"
-authors = ["Daniel Dunn <dannydunn@eternityforest.com>"]
-license = "LGPLv2+"
+authors = [ { name = "Daniel Dunn" } ]
+license = "LGPL-2.0-or-later"
 readme = "README.md"
-packages = [{ include = "scullery" }]
+requires-python = ">=3.11"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-beartype = "*"
-PyYAML = "^6.0.1"
-paho-mqtt = "*"
-pint = "*"
-pyyaml = "*"
+dependencies=[
+    "PyYAML ~= 6.0.1",
+    "pint",
+    "pyyaml",
+    "pydantic"
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "*"
-handsdown = "^2.1.0"
+
+
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
 
 
 [tool.ruff]
@@ -25,5 +28,5 @@ line-length = 140
 
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.8.14,<0.9.0"]
+build-backend = "uv_build"

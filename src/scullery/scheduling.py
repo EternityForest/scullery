@@ -196,14 +196,7 @@ class BaseRepeatingEvent(BaseEvent):
             if not f:
                 f = f"{self.fstr}(dead)"
             f = str(f)
-            return (
-                "<BaseRepeatingEvent at "
-                + str(id(self))
-                + f
-                + " every "
-                + str(self.interval)
-                + "s >"
-            )
+            return "<BaseRepeatingEvent at " + str(id(self)) + f + " every " + str(self.interval) + "s >"
         except Exception:
             print(traceback.format_exc())
             return super().__repr__()
@@ -237,9 +230,7 @@ class BaseRepeatingEvent(BaseEvent):
             finally:
                 self.lock.release()
         else:
-            logger.warning(
-                f"Tried to schedule something that is still running: {str(self.f())}"
-            )
+            logger.warning(f"Tried to schedule something that is still running: {str(self.f())}")
 
     def _schedule(self):
         raise NotImplementedError()
@@ -256,7 +247,7 @@ class BaseRepeatingEvent(BaseEvent):
 
     # We want to use the worker pool to unregister so that we know which thread the scheduler.unregister call is
     # going to be in to prevent deadlocks. Also, we take a dummy var so we can use this as a weakref callback
-    def unregister(self, dummy=None):
+    def unregister(self, dummy: Any = None):
         self.stop = True
         workers.do(self._unregister)
 
@@ -300,9 +291,7 @@ class BaseRepeatingEvent(BaseEvent):
                         if f:
                             handle_first_error(f)
                     except Exception:
-                        logging.exception(
-                            "Error handling first error in repeating event"
-                        )
+                        logging.exception("Error handling first error in repeating event")
                 self.errored = True
             finally:
                 # We have to reschedule no matter what.
@@ -401,9 +390,7 @@ class NewScheduler:
             if self._running:
                 return
             self._running = True
-            self.thread = threading.Thread(
-                daemon=self.daemon, target=self.run, name="schedulerthread"
-            )
+            self.thread = threading.Thread(daemon=self.daemon, target=self.run, name="schedulerthread")
             self.thread2 = threading.Thread(
                 daemon=self.daemon,
                 target=self.manager,
@@ -425,9 +412,7 @@ class NewScheduler:
         return self.every(f, 3600)  # type: ignore
 
     @overload
-    def every(
-        self, interval: float = 0
-    ) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
+    def every(self, interval: float = 0) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
         pass
 
     @overload
@@ -448,9 +433,7 @@ class NewScheduler:
 
         if isinstance(f, (int, float)):
             if not interval == 0:
-                raise ValueError(
-                    "Must supply function and interval, or just interval for decorator."
-                )
+                raise ValueError("Must supply function and interval, or just interval for decorator.")
 
             def decorate(fn):
                 return self.every(fn, f)
@@ -531,9 +514,7 @@ class NewScheduler:
                 except ValueError:
                     pass
                 except Exception:
-                    logger.exception(
-                        "failed to remove event, perhaps it was not actually scheduled"
-                    )
+                    logger.exception("failed to remove event, perhaps it was not actually scheduled")
 
             except Exception:
                 logger.exception("failed to unregister event")
@@ -569,9 +550,7 @@ class NewScheduler:
                         # On the off chance it actually IS scheduled, replace whatever was there last.
                         workers.do(i.schedule)
                         logger.debug(
-                            "Rescheduled "
-                            + str(i)
-                            + "using error recovery, could indicate a bug somewhere, or just a long running event."
+                            "Rescheduled " + str(i) + "using error recovery, could indicate a bug somewhere, or just a long running event."
                         )
             except Exception:
                 logger.exception("Exception while scheduling event")
